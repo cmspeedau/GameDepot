@@ -7,7 +7,6 @@ import type { ChunkFileResult } from "./chunker";
 export interface DropletFile {
   path: string;
   size: number;
-  sha256: string;
   /**
    * Permission bits (`mode & 0o7777`). A client assembles the install itself
    * from chunks, so this is where the executable bit survives: without it a
@@ -15,6 +14,7 @@ export interface DropletFile {
    * meaningful mode (a CDN stream) publish 0o644.
    */
   mode: number;
+  sha256: string;
   chunks: ChunkFileResult["chunks"];
 }
 export interface DropletManifest {
@@ -93,4 +93,67 @@ export async function readDropletManifest(
   path: string,
 ): Promise<DropletManifest> {
   return parseDropletManifest(await readFile(path, "utf8"));
+}
+
+export interface DropletManifestDiff {
+  unchangedFiles: DropletFile[];
+  changedFiles: Array<{ oldFile: DropletFile; newFile: DropletFile }>;
+  addedFiles: DropletFile[];
+  removedFiles: DropletFile[];
+  reusableChunkHashes: Set<string>;
+  chunkHashesToDownload: Set<string>;
+  bytesToDownload: number;
+  totalBytes: number;
+}
+
+/** Compare two v1 manifests by path/digest and content-addressed chunk identity. */
+export function diffDropletManifests(
+  oldManifest: DropletManifest,
+  newManifest: DropletManifest,
+): DropletManifestDiff {
+  for (const [name, manifest] of [
+    ["oldManifest", oldManifest],
+    ["newManifest", newManifest],
+  ] as const) {
+    if (
+      !manifest ||
+      manifest.format !== "gamedepot-droplet" ||
+      manifest.version !== 1
+    )
+      throw new Error(`${name} must be a gamedepot-droplet v1 manifest`);
+  }
+  const oldByPath = new Map(oldManifest.files.map((file) => [file.path, file]));
+  const newByPath = new Map(newManifest.files.map((file) => [file.path, file]));
+  const unchangedFiles: DropletFile[] = [];
+  const changedFiles: DropletManifestDiff["changedFiles"] = [];
+  const addedFiles: DropletFile[] = [];
+  const removedFiles: DropletFile[] = [];
+  for (const file of newManifest.files) {
+    const oldFile = oldByPath.get(file.path);
+    if (!oldFile) addedFiles.push(file);
+    else if (oldFile.sha256 === file.sha256) unchangedFiles.push(file);
+    else changedFiles.push({ oldFile, newFile: file });
+  }
+  for (const file of oldManifest.files)
+    if (!newByPath.has(file.path)) removedFiles.push(file);
+  const oldChunks = new Set(Object.keys(oldManifest.chunkIndex));
+  const newChunks = new Set(Object.keys(newManifest.chunkIndex));
+  const reusableChunkHashes = new Set(
+    [...newChunks].filter((hash) => oldChunks.has(hash)),
+  );
+  const chunkHashesToDownload = new Set(
+    [...newChunks].filter((hash) => !oldChunks.has(hash)),
+  );
+  const totalBytes = [...newChunks].reduce(
+    (sum, hash) => sum + newManifest.chunkIndex[hash]!.size,
+    0,
+  );
+  const bytesToDownload = [...chunkHashesToDownload].reduce(
+    (sum, hash) => sum + newManifest.chunkIndex[hash]!.size,
+    0,
+  );
+  return {
+    unchangedFiles, changedFiles, addedFiles, removedFiles,
+    reusableChunkHashes, chunkHashesToDownload, bytesToDownload, totalBytes,
+  };
 }
