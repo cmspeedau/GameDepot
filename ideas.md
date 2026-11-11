@@ -19,18 +19,31 @@ settings to `umu-run`, preventing Proton games from starting.
   tools; preserve variables deliberately required by the game or runtime.
 - Add a regression test or diagnostic that verifies the child environment.
 
-### Verify emulator/dependency installation on Linux — Drop #534
+### Improve emulator support — Drop #189 and #534
 
-[Drop issue #534](https://github.com/Drop-OSS/drop/issues/534) reports that an
-emulator dependency does not install on Linux even though the dependent game
-installs.
+[Drop issue #189](https://github.com/Drop-OSS/drop/issues/189) discusses
+emulation support and was closed as completed upstream; GameDepot already has
+generic emulator-command wrapping. [Drop issue #534](https://github.com/Drop-OSS/drop/issues/534)
+reports a Linux failure installing an emulator dependency. Build on the
+existing configurable model rather than hardcoding an exhaustive list of
+consoles and emulator brands.
 
 - Check GameDepot's dependency install and launch paths on Linux, including
-  missing, partially installed, and setup-required dependencies.
-- Report actionable dependency state instead of panicking or failing with a
-  generic launch error.
-- Add an end-to-end test for a game that launches through an installed
-  emulator.
+  missing, partially installed, and setup-required emulators. Report actionable
+  state instead of panicking or failing with a generic launch error.
+- Make emulator setup and selection clearer: show install/availability state,
+  offer extension-based suggestions, and allow a per-game emulator or launch
+  command choice where multiple options are configured.
+- Support platform-specific emulator commands and an explicit working
+  directory, while keeping the ROM path and arguments safely separated.
+- Add validation for the configured emulator executable, ROM file, and
+  platform compatibility before launch.
+- Consider optional emulator configuration and BIOS dependencies. Let admins
+  configure or supply files, record provenance and licensing, and never imply
+  that supplying a file grants redistribution rights.
+- Test `{rom}` substitution, paths with spaces and Unicode, environment
+  merging, platform mismatches, absent dependencies, and setup-required
+  emulators end to end.
 
 ### Make working-directory behavior explicit — Drop #435
 
