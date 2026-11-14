@@ -10,6 +10,7 @@ cloud_saves = { path = "../cloud_saves", version = "0.1.0" }
 database = { path = "../database", version = "0.1.0" }
 dynfmt = { version = "0.1.5", features = ["curly"] }
 games = { path = "../games", version = "0.1.0" }
+importer = { path = "../importer", version = "0.1.0" } # local import
 keyvalues-parser = "0.2.3"
 log = "0.4.28"
 page_size = "0.6.0"
