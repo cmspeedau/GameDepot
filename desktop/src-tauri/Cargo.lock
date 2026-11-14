@@ -4633,6 +4633,7 @@ dependencies = [
  "database",
  "dynfmt",
  "games",
+ "importer",
  "keyvalues-parser",
  "log",
  "page_size",

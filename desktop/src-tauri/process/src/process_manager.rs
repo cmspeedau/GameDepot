@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     fs::{OpenOptions, create_dir_all},
     io,
-    path::PathBuf,
+    path::{Component, Path, PathBuf},
     process::{Command, ExitStatus},
     sync::Arc,
     thread::spawn,
@@ -390,14 +390,16 @@ impl ProcessManager<'_> {
             .ok_or(ProcessError::InvalidVersion)?;
 
         // Launcher handoff: a build the publisher declared as needing its
-        // store client cannot be started by direct-exec - letting it try is
-        // a DRM crash two seconds in, not a launch. The storefront runner
-        // that plays such builds around their client arrives in a later
-        // step; until then the refusal names the reason. (A launcher's own
-        // install still plays through the detected-copy path, which bypasses
-        // this manager entirely.)
+        // store client is not started by plain direct exec here. The play
+        // hands off to the storefront runner, which runs the content in place
+        // under the compatibility layer and owns the session from there. A
+        // launcher's own install still plays through the detected-copy path,
+        // which bypasses this manager entirely. The runner works under this
+        // same guard - taking it twice from one thread would park forever.
         if !game_version.runs_standalone {
-            return Err(ProcessError::StoreClientRequired);
+            let version_name = version_name.clone();
+            let install_dir = install_dir.clone();
+            return self.hand_off_to_storefront(&mut db_lock, meta, version_name, install_dir);
         }
 
         let game_log_folder = &self.get_log_dir(game_id);
@@ -643,6 +645,192 @@ impl ProcessManager<'_> {
                 .on_process_finish(wait_thread_game_id.id, result)
         });
         Ok(())
+    }
+
+    /// Hand a launcher-gated build to its storefront runner. A build the
+    /// publisher declared as needing its store client cannot be cold-started
+    /// by direct exec, so the play goes through the runner instead: the
+    /// content runs in place under the compatibility layer, and the session is
+    /// tracked like any other play so Stop reaches it and the wait thread
+    /// reports playtime. Starting the store client itself is not part of this
+    /// path yet - see the per-store handoff runners the roadmap still lists.
+    fn hand_off_to_storefront(
+        &mut self,
+        db: &mut Database,
+        meta: DownloadableMetadata,
+        version_name: String,
+        install_dir: String,
+    ) -> Result<(), ProcessError> {
+        db.applications
+            .game_versions
+            .get(&version_name)
+            .ok_or(ProcessError::InvalidVersion)?;
+
+        // The runner plays the content in place: natively on Windows, or
+        // through umu + Proton against a storefront prefix on Linux, the way
+        // the detected-copy play does.
+        let install_path = PathBuf::from(&install_dir);
+        let exe =
+            importer::find_game_executable(&install_path).ok_or(ProcessError::NotInstalled)?;
+        let exe_relative = Path::new(&exe);
+        if exe_relative.is_absolute()
+            || exe_relative
+                .components()
+                .any(|c| !matches!(c, Component::Normal(_)))
+        {
+            return Err(ProcessError::NotInstalled);
+        }
+        let exe_path = install_path.join(&exe);
+        let mut command =
+            storefront_play_command(&exe_path, &install_path, &meta.id, &version_name, db)?;
+
+        let game_log_folder = &self.get_log_dir(meta.id.clone());
+        create_dir_all(game_log_folder)?;
+        let current_time = chrono::offset::Local::now();
+        let log_file = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .read(true)
+            .create(true)
+            .open(game_log_folder.join(format!(
+                "{}-{}.log",
+                &meta.version,
+                current_time.timestamp()
+            )))?;
+        let error_file = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .read(true)
+            .create(true)
+            .open(game_log_folder.join(format!(
+                "{}-{}-error.log",
+                &meta.version,
+                current_time.timestamp()
+            )))?;
+
+        command
+            .stderr(error_file)
+            .stdout(log_file)
+            .env_remove("RUST_LOG")
+            .current_dir(install_dir);
+
+        let child = command.spawn()?;
+        let launch_process_handle = Arc::new(SharedChild::new(child)?);
+
+        db.applications
+            .transient_statuses
+            .insert(meta.clone(), ApplicationTransientStatus::Running {});
+
+        push_game_update(
+            &self.app_handle,
+            &meta.id,
+            None,
+            (None, Some(ApplicationTransientStatus::Running {})),
+        );
+
+        let wait_thread_handle = launch_process_handle.clone();
+        let wait_thread_game_id = meta.clone();
+
+        self.processes.insert(
+            meta.id.clone(),
+            RunningProcess {
+                handle: wait_thread_handle,
+                start: SystemTime::now(),
+                manually_killed: false,
+            },
+        );
+        spawn(move || {
+            let result: Result<ExitStatus, std::io::Error> = launch_process_handle.wait();
+
+            PROCESS_MANAGER
+                .lock()
+                .on_process_finish(wait_thread_game_id.id, result)
+        });
+        Ok(())
+    }
+}
+
+/// The storefront play command for one launcher-gated build: the copy the
+/// storefront owns, run in place - umu-run plus Proton on Linux, the
+/// executable itself on every other platform - the same invocation the depot's
+/// own launches use, minus the depot's launch formatting. Refusals here are
+/// plain errors: the handoff reports them and starts nothing.
+fn storefront_play_command(
+    exe: &Path,
+    folder: &Path,
+    game_id: &str,
+    version_id: &str,
+    db: &Database,
+) -> Result<Command, ProcessError> {
+    #[cfg(target_os = "linux")]
+    {
+        use client::compat::{COMPAT_INFO, UMU_LAUNCHER_EXECUTABLE};
+        let umu = UMU_LAUNCHER_EXECUTABLE
+            .as_ref()
+            .ok_or(ProcessError::RequiredDependency(
+                game_id.to_string(),
+                version_id.to_string(),
+            ))?;
+        if COMPAT_INFO.as_ref().is_none_or(|c| !c.umu_installed) {
+            return Err(ProcessError::RequiredDependency(
+                game_id.to_string(),
+                version_id.to_string(),
+            ));
+        }
+        let proton_path = db
+            .applications
+            .default_proton_path
+            .clone()
+            .ok_or(ProcessError::NoCompat)?;
+        if !crate::compat::read_proton_path(PathBuf::from(&proton_path))
+            .ok()
+            .flatten()
+            .is_some()
+        {
+            return Err(ProcessError::NoCompat);
+        }
+        let pfx = DATA_ROOT_DIR
+            .join("pfx")
+            .join("launcher")
+            .join(slug_for(folder));
+        create_dir_all(&pfx)?;
+        let mut command = Command::new(umu);
+        command
+            .arg(exe)
+            .current_dir(folder)
+            .env("GAMEID", game_id)
+            .env("WINEPREFIX", &pfx)
+            .env("PROTONPATH", &proton_path);
+        Ok(command)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (game_id, version_id);
+        let mut command = Command::new(exe);
+        command.current_dir(folder);
+        Ok(command)
+    }
+}
+
+/// The storefront prefix key for one install folder, the same slug the
+/// detected-copy play uses to name the Proton prefix it runs.
+fn slug_for(folder: &Path) -> String {
+    let raw = folder.to_string_lossy();
+    let slug = raw
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    let slug = slug.trim_matches('-').to_string();
+    if slug.is_empty() {
+        "game".to_string()
+    } else {
+        slug
     }
 }
 
