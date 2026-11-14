@@ -165,6 +165,17 @@ that work.
 
 ## Self-hosting and library management
 
+### Optional Store and Library-first homepage
+
+Allow server operators to disable the Store with the `GAMEDEPOT_STORE`
+container runtime variable, defaulting to disabled. When the Store is disabled,
+the user-facing homepage should fall back to the Library, and the desktop client
+should not present a Store destination that cannot be used. When games are added
+to a user's library, they should appear there automatically; reuse the existing
+library refresh/update flow where possible. Define how the desktop client learns
+whether the connected server has the Store enabled without reading the server's
+container environment directly.
+
 ### Nix packaging and modules — Drop #440
 
 [Drop issue #440](https://github.com/Drop-OSS/drop/issues/440) requests Nix

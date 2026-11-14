@@ -10,12 +10,11 @@
           Admin · Depot
         </p>
         <h1 class="mt-2 text-3xl font-semibold tracking-tight">
-          Catalog discovery
+          Catalog library
         </h1>
         <p class="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
-          Discover owned products and review their metadata before adding them
-          to your depot. Discovery never publishes or downloads content by
-          itself.
+          Load owned products and review their metadata before adding them to
+          your depot. Loading never publishes or downloads content by itself.
         </p>
       </div>
       <span
@@ -42,7 +41,7 @@
       </span>
     </header>
 
-    <!-- Provider selector: minimal addition; GOG flow below remains untouched. -->
+    <!-- Provider selector: each provider loads its own owned titles. -->
     <nav aria-label="Store provider" class="flex flex-wrap gap-2">
       <button
         v-for="provider in providers"
@@ -129,7 +128,7 @@
           </span>
         </div>
         <div
-          v-if="activeProviderId === 'ea' && eaLoginAvailable"
+          v-if="false && eaLoginAvailable"
           class="mb-4 flex flex-wrap items-center gap-3"
         >
           <button
@@ -146,7 +145,7 @@
           </span>
         </div>
         <p
-          v-else-if="activeProviderId === 'ea'"
+          v-else-if="false"
           class="mb-4 text-xs text-zinc-500"
         >
           EA grants no third-party sign-in clients, so connect with your own
@@ -422,57 +421,38 @@
           <div
             class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-300"
           >
-            <MagnifyingGlassIcon class="h-5 w-5" aria-hidden="true" />
+            <ArchiveBoxIcon class="h-5 w-5" aria-hidden="true" />
           </div>
           <div>
-            <h2 class="text-base font-semibold">Discover catalog entries</h2>
+            <h2 class="text-base font-semibold">Owned GOG titles</h2>
             <p class="mt-1 text-sm leading-6 text-zinc-400">
-              Search by title or provide a GOG product ID. Connect a supported
-              account or catalog adapter to retrieve owned products and
-              available releases.
+              Load the titles owned by a GOG account. Connect a supported
+              account or catalog adapter, then inspect available releases
+              before choosing what to ingest.
             </p>
           </div>
         </div>
 
-        <form class="mt-6 space-y-4" @submit.prevent="discoverGog">
-          <div>
-            <label
-              for="gog-query"
-              class="mb-2 block text-sm font-medium text-zinc-300"
-              >Title or GOG product ID</label
+        <form class="mt-6" @submit.prevent="loadGogLibrary">
+          <div class="flex flex-col gap-3 sm:flex-row sm:justify-end">
+            <button
+              type="submit"
+              :disabled="loading || !activeConnection"
+              class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
-            <div class="flex flex-col gap-3 sm:flex-row">
-              <input
-                id="gog-query"
-                v-model.trim="gogQuery"
-                type="search"
-                autocomplete="off"
-                placeholder="e.g. product name or numeric ID"
-                class="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3.5 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              <ArrowPathIcon
+                v-if="loading"
+                class="h-4 w-4 animate-spin"
+                aria-hidden="true"
               />
-              <button
-                type="submit"
-                :disabled="loading || !gogQuery"
-                class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <ArrowPathIcon
-                  v-if="loading"
-                  class="h-4 w-4 animate-spin"
-                  aria-hidden="true"
-                />
-                <MagnifyingGlassIcon
-                  v-else
-                  class="h-4 w-4"
-                  aria-hidden="true"
-                />
-                {{ loading ? "Searching…" : "Discover" }}
-              </button>
-            </div>
+              <ArchiveBoxIcon v-else class="h-4 w-4" aria-hidden="true" />
+              {{ loading ? "Loading…" : "Load owned games" }}
+            </button>
           </div>
           <p
             v-if="errorMessage"
             role="alert"
-            class="rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-200"
+            class="mt-4 rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-200"
           >
             {{ errorMessage }}
           </p>
@@ -511,7 +491,7 @@
           class="mt-5 border-t border-zinc-800 pt-4 text-xs leading-5 text-zinc-500"
         >
           Store credentials belong on the server: use Connect account above and
-          discovery endpoints will pick the stored credential up by themselves.
+          the load endpoints will pick the stored credential up by themselves.
           Tokens are never echoed back to the browser.
         </p>
       </aside>
@@ -525,7 +505,7 @@
         <div
           class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-300"
         >
-          <MagnifyingGlassIcon class="h-5 w-5" aria-hidden="true" />
+          <ArchiveBoxIcon class="h-5 w-5" aria-hidden="true" />
         </div>
         <div class="grow">
           <h2 class="text-base font-semibold">
@@ -539,7 +519,7 @@
 
       <form class="mt-6 flex flex-col gap-3" @submit.prevent="loadLibrary">
         <div
-          v-if="activeProviderId === 'ea'"
+          v-if="false"
           class="flex flex-col gap-3 sm:flex-row"
         >
           <label for="ea-search" class="sr-only">EA catalog search</label>
@@ -562,7 +542,7 @@
               class="h-4 w-4 animate-spin"
               aria-hidden="true"
             />
-            <MagnifyingGlassIcon v-else class="h-4 w-4" aria-hidden="true" />
+            <ArchiveBoxIcon v-else class="h-4 w-4" aria-hidden="true" />
             {{ loading ? "Loading…" : "Load owned titles" }}
           </button>
         </div>
@@ -583,16 +563,50 @@
         class="flex flex-col gap-3 border-b border-zinc-800 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"
       >
         <div>
-          <h2 class="font-semibold">Discovered products</h2>
+          <h2 class="font-semibold">Owned products</h2>
           <p class="mt-1 text-sm text-zinc-500">
             Review identity and available content before choosing what to
             ingest.
           </p>
         </div>
-        <span
-          class="rounded-full bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-400"
-          >{{ products.length }} results</span
+        <div class="flex items-center gap-3">
+          <span
+            v-if="activeProviderId === 'gog' || activeProviderId === 'ubisoft'"
+            class="inline-flex"
+          >
+            <button
+              type="button"
+              :disabled="checking || !activeConnection"
+              class="inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-700 px-3.5 py-2 text-sm font-medium text-zinc-200 transition hover:border-blue-500/60 hover:bg-blue-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+              @click="checkForUpdates"
+            >
+              <ArrowPathIcon
+                v-if="checking"
+                class="h-4 w-4 animate-spin"
+                aria-hidden="true"
+              />
+              <ArrowDownTrayIcon v-else class="h-4 w-4" aria-hidden="true" />
+              {{ checking ? "Checking…" : "Check for updates" }}
+            </button>
+          </span>
+          <span
+            class="rounded-full bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-400"
+            >{{ products.length }} results</span
+          >
+        </div>
+      </div>
+      <div
+        v-if="updatesSummary"
+        role="status"
+        class="border-b border-zinc-800 px-5 py-3 text-sm leading-6 text-zinc-300 sm:px-6"
+      >
+        <p>{{ updatesSummary.headline }}</p>
+        <ul
+          v-if="updatesSummary.lines.length"
+          class="mt-2 list-inside list-disc space-y-1 text-zinc-400"
         >
+          <li v-for="line in updatesSummary.lines" :key="line">{{ line }}</li>
+        </ul>
       </div>
 
       <div v-if="products.length === 0" class="px-5 py-14 text-center sm:px-6">
@@ -601,12 +615,11 @@
           aria-hidden="true"
         />
         <h3 class="mt-4 text-sm font-semibold text-zinc-200">
-          No products discovered
+          No owned titles
         </h3>
         <p class="mx-auto mt-2 max-w-md text-sm leading-6 text-zinc-500">
-          Connect the {{ activeProvider.label }} discovery provider, then search
-          for a title or sync your owned library. Results will appear here for
-          review.
+          Connect the {{ activeProvider.label }} account, then load your owned
+          library. Results will appear here for review.
         </p>
       </div>
 
@@ -635,28 +648,20 @@
                 product.releaseCount === 1 ? "" : "s"
               }}
             </p>
-            <div v-if="activeProviderId === 'ea'" class="mt-3">
-              <label
-                :for="`ea-archive-${product.id}`"
-                class="mb-1.5 block text-xs text-zinc-500"
-                >Game archive URL (HTTPS; pre-filled from the entitlement
-                link)</label
-              >
-              <input
-                :id="`ea-archive-${product.id}`"
-                v-model.trim="product.archiveUrl"
-                type="url"
-                autocomplete="off"
-                placeholder="https:// …/archive.zip"
-                class="w-full min-w-0 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              />
-            </div>
+            <p
+              v-if="false"
+              class="mt-2 text-xs leading-5 text-zinc-500"
+            >
+              EA content arrives with your existing launcher install; the
+              desktop client imports it into the depot. This page links and
+              lists the title.
+            </p>
           </div>
           <button
+            v-if="activeProviderId !== 'ea'"
             type="button"
             :disabled="
               product.ingesting ||
-              (activeProviderId === 'ea' && !product.archiveUrl) ||
               (activeProviderId === 'ubisoft' && product.installable === false)
             "
             class="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-zinc-700 px-3.5 py-2 text-sm font-medium text-zinc-200 transition hover:border-blue-500/60 hover:bg-blue-500/10 disabled:opacity-50"
@@ -685,7 +690,6 @@ import {
   ArchiveBoxIcon,
   ArrowDownTrayIcon,
   ArrowPathIcon,
-  MagnifyingGlassIcon,
   ShieldCheckIcon,
 } from "@heroicons/vue/24/outline";
 
@@ -713,10 +717,6 @@ interface DiscoveredProduct {
   productId?: string;
   /** False when the ownership service says this row cannot be acquired. */
   installable?: boolean;
-  // EA: the ingest endpoint needs a title plus an HTTPS archive URL. The
-  // entitlement's download link pre-fills it; it stays editable because EA
-  // links are short-lived.
-  archiveUrl?: string;
 }
 
 // Shape returned by the Epic and Ubisoft library endpoints.
@@ -727,6 +727,8 @@ interface OwnedGame {
   appName?: string;
   title?: string;
   entitlementName?: string;
+  displayName?: string;
+  description?: string;
   // Ubisoft owned titles
   spaceId?: string;
   gameId?: string;
@@ -739,14 +741,16 @@ interface OwnedGame {
   // EA owned games (normalized by the library utility)
   id?: string;
   offerId?: string;
-  downloadLink?: string;
 }
 
 const providers: Array<{ id: ProviderId; label: string }> = [
   { id: "gog", label: "GOG" },
   { id: "epic", label: "Epic" },
   { id: "ubisoft", label: "Ubisoft" },
-  { id: "ea", label: "EA" },
+  // EA is launcher-owned (M6): its games are acquired by the desktop
+  // client against the user's own EA install, not through this node-side
+  // catalog discovery ingest. The EA connect/discovery surface below is
+  // retained but unreachable from the provider tabs.
 ];
 
 const activeProviderId = ref<ProviderId>("gog");
@@ -754,7 +758,6 @@ const activeProvider = computed(
   () => providers.find((p) => p.id === activeProviderId.value) || providers[0],
 );
 
-const gogQuery = ref("");
 const ubisoftUserId = ref("");
 const eaSearch = ref("");
 // Connect-form fields, cleared as soon as the server accepts the credentials.
@@ -781,6 +784,8 @@ const loading = ref(false);
 const connecting = ref(false);
 const errorMessage = ref("");
 const notice = ref("");
+const checking = ref(false);
+const updatesSummary = ref<{ headline: string; lines: string[] } | null>(null);
 const products = ref<DiscoveredProduct[]>([]);
 
 interface StoredConnection {
@@ -812,10 +817,12 @@ const connectionTone = computed(() =>
 );
 
 const providerDescription = computed(() =>
-  activeProviderId.value === "epic"
+  activeProviderId.value === "gog"
+    ? "Load the titles owned by a GOG account. Connect a supported account or catalog adapter, then inspect available releases before choosing what to ingest."
+    : activeProviderId.value === "epic"
     ? "Connect an Epic account with a refresh token so the server can keep its entitlements fresh. Loads the entitlements owned by that account; ingest streams the raw depot files directly into the depot."
     : activeProviderId.value === "ea"
-      ? "Paste the Cookie header from a signed-in help.ea.com tab: the server lists your owned games through that EA Help session (no OAuth client exists for EA) and asks for a fresh copy when EA expires it. Ingest streams a game archive into the depot from a provided download link."
+      ? "Paste the Cookie header from a signed-in help.ea.com tab: the server lists your owned games through that EA Help session (no OAuth client exists for EA) and asks for a fresh copy when EA expires it. EA titles join the depot by importing an existing launcher install from the desktop client, so this page links and lists what the account owns."
       : "Sign in with your Ubisoft email and password - the password is used for the single sign-in and never stored; the session ticket and a remember-me ticket are kept and renewed automatically. A two-factor code may be requested once. Loads the titles owned by that account; ingest streams the raw game files directly into the depot.",
 );
 
@@ -856,23 +863,12 @@ async function loadConnections() {
 
 onMounted(() => {
   loadConnections();
-  probeEaLogin();
 });
 
-// EA grants no public OAuth clients, so browser sign-in is only offered when
-// the server has a confidential client configured; probe once on mount.
+// EA grants no public OAuth clients and is launcher-owned: no catalog
+// discovery, no browser sign-in from this page. State retained for the
+// (unreachable) connect form only.
 const eaLoginAvailable = ref(false);
-
-async function probeEaLogin() {
-  try {
-    const { loginUrl } = await $fetch<{ loginUrl: string | null }>(
-      "/api/admin/depot/connection/ea/login-url",
-    );
-    eaLoginAvailable.value = Boolean(loginUrl);
-  } catch {
-    eaLoginAvailable.value = false;
-  }
-}
 
 function formatExpiry(value: string) {
   const date = new Date(value);
@@ -908,7 +904,7 @@ async function connect() {
       body.userId = ubisoftUserId.value;
     }
   }
-  if (provider === "ea") {
+  if (false) {
     if (eaConnectCookies.value) body.browserCookies = eaConnectCookies.value;
     if (eaConnectCode.value) body.code = eaConnectCode.value;
     if (eaConnectToken.value) body.accessToken = eaConnectToken.value;
@@ -1051,8 +1047,8 @@ async function disconnect() {
 }
 const steps = [
   {
-    title: "Discover",
-    description: "Find owned GOG products and inspect available metadata.",
+    title: "Load owned titles",
+    description: "Load owned GOG products and inspect available metadata.",
   },
   {
     title: "Review",
@@ -1077,17 +1073,14 @@ function resetError() {
   notice.value = "";
 }
 
-async function discoverGog() {
-  if (!gogQuery.value) return;
+async function loadGogLibrary() {
+  if (!activeConnection.value) return;
   loading.value = true;
   resetError();
   try {
     const response = await $fetch<{
       games: Array<{ id: string; title: string }>;
-    }>("/api/admin/depot/gog/library", {
-      method: "GET",
-      query: { title: gogQuery.value },
-    });
+    }>("/api/admin/depot/gog/library", { method: "GET" });
     products.value = response.games.map((game) => ({
       id: game.id,
       title: game.title,
@@ -1096,8 +1089,8 @@ async function discoverGog() {
     products.value = [];
     errorMessage.value =
       error instanceof Error
-        ? `GOG discovery is not available: ${error.message}`
-        : "GOG discovery is not available. Configure a server-side GOG provider and try again.";
+        ? `GOG library is not available: ${error.message}`
+        : "GOG library is not available. Configure a server-side GOG provider and try again.";
   } finally {
     loading.value = false;
   }
@@ -1123,14 +1116,12 @@ async function loadLibrary() {
     products.value = response.games
       .map((game) => {
         if (activeProviderId.value === "epic") {
+          // The library route already resolved `title` (catalog-service
+          // name, never the machine slug) and `appName` for the ingest call.
           return {
             id: game.catalogItemId || game.appName || game.namespace || "",
-            title:
-              game.title ||
-              game.entitlementName ||
-              game.appName ||
-              game.catalogItemId ||
-              "Untitled",
+            title: game.title || "Untitled",
+            description: game.description,
             namespace: game.namespace,
             catalogItemId: game.catalogItemId,
             appName: game.appName,
@@ -1142,7 +1133,6 @@ async function loadLibrary() {
             id: game.id || game.offerId || "",
             title: game.title || game.offerId || "Untitled",
             gameTitle: game.title || game.offerId,
-            archiveUrl: game.downloadLink ?? "",
           };
         }
         return {
@@ -1187,14 +1177,6 @@ async function ingest(product: DiscoveredProduct) {
           appName: product.appName,
         },
       });
-    } else if (activeProviderId.value === "ea") {
-      await $fetch("/api/admin/depot/ea/ingest", {
-        method: "POST",
-        body: {
-          gameTitle: product.gameTitle || product.title,
-          archiveUrl: product.archiveUrl,
-        },
-      });
     } else {
       await $fetch("/api/admin/depot/ubisoft/ingest", {
         method: "POST",
@@ -1213,6 +1195,64 @@ async function ingest(product: DiscoveredProduct) {
         : `Could not queue ${product.title}. Configure the server-side ${label} ingestion provider first.`;
   } finally {
     product.ingesting = false;
+  }
+}
+
+/**
+ * Ask the provider for newer builds of the games the depot acquired from
+ * it, and let the server queue acquisitions for the ones that changed.
+ * Newer builds are maintenance on releases the depot already serves, so
+ * they run without a second press; titles the depot has never acquired are
+ * reported here and stay that way until someone ingests one.
+ */
+async function checkForUpdates() {
+  checking.value = true;
+  updatesSummary.value = null;
+  try {
+    const response = await $fetch<{
+      checked: number;
+      updates: Array<{
+        productId: string;
+        title: string;
+        current: string | null;
+        latest: string;
+        queued: boolean;
+      }>;
+      unimported: Array<{ productId: string; title: string }>;
+    }>(`/api/admin/depot/${activeProviderId.value}/check-updates`, {
+      method: "POST",
+    });
+    const queued = response.updates.filter((u) => u.queued).length;
+    const lines = response.updates.map(
+      (u) =>
+        `${u.title}: ${u.current ?? "no imported version"} → ${u.latest}${
+          u.queued ? "" : " (acquisition already running)"
+        }`,
+    );
+    if (response.unimported.length)
+      lines.push(
+        `${response.unimported.length} owned title(s) the depot has not acquired: ${response.unimported
+          .slice(0, 5)
+          .map((u) => u.title)
+          .join(", ")}${response.unimported.length > 5 ? "…" : ""}`,
+      );
+    updatesSummary.value = {
+      headline:
+        response.updates.length === 0
+          ? `Checked ${response.checked} acquired game(s): all current.`
+          : `${queued} of ${response.updates.length} update(s) queued from ${response.checked} acquired game(s).`,
+      lines,
+    };
+  } catch (error) {
+    updatesSummary.value = {
+      headline:
+        error instanceof Error
+          ? `Update check failed: ${error.message}`
+          : "Update check failed.",
+      lines: [],
+    };
+  } finally {
+    checking.value = false;
   }
 }
 </script>

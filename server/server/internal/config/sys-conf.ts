@@ -17,6 +17,8 @@ class SystemConfig {
 
   private checkForUpdates = getUpdateCheckConfig();
 
+  private storeEnabled = isStoreEnabled();
+
   constructor() {
     // get drop version and git ref from nuxt config
     const config = useRuntimeConfig();
@@ -73,6 +75,10 @@ class SystemConfig {
   shouldOidcUsePkce() {
     return this.oidcPkce;
   }
+
+  isStoreEnabled() {
+    return this.storeEnabled;
+  }
 }
 
 export const systemConfig = new SystemConfig();
@@ -98,4 +104,16 @@ function getUpdateCheckConfig(): boolean {
   }
 
   return false;
+}
+
+/**
+ * Determines whether the Store is enabled based on the GAMEDEPOT_STORE
+ * container runtime variable. Defaults to disabled when unset.
+ * @returns true if the Store is enabled, false otherwise.
+ */
+function isStoreEnabled(): boolean {
+  const envStore = process.env.GAMEDEPOT_STORE;
+  if (envStore === undefined) return false;
+  const normalized = envStore.trim().toLowerCase();
+  return normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "on";
 }

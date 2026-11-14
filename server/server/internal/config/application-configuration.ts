@@ -1,6 +1,7 @@
 import type { ApplicationSettingsModel } from "~/prisma/client/models";
 import prisma from "../db/database";
 import type { Settings } from "../utils/types";
+import { systemConfig } from "./sys-conf";
 
 class ApplicationConfiguration {
   // Reference to the currently selected application configuration
@@ -85,6 +86,7 @@ class ApplicationConfiguration {
   async getSettings(): Promise<Settings> {
     return {
       store: {
+        enabled: systemConfig.isStoreEnabled(),
         showGamePanelTextDecoration: await applicationSettings.get(
           "showGamePanelTextDecoration",
         ),

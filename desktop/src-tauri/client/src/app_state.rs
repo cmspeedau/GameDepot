@@ -16,4 +16,5 @@ pub struct AppState {
     pub status: AppStatus,
     pub user: Option<User>,
     pub umu_state: UmuState,
+    pub store_enabled: bool,
 }

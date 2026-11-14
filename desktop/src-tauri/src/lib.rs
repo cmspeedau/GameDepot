@@ -64,6 +64,8 @@ mod collections;
 mod download_manager;
 mod downloads;
 mod games;
+mod imports;
+mod launcher_play;
 mod process;
 mod profiles;
 mod remote;
@@ -135,6 +137,7 @@ async fn setup(handle: AppHandle) -> AppState {
             status: AppStatus::NotConfigured,
             user: None,
             umu_state,
+            store_enabled: false,
         };
     }
 
@@ -180,10 +183,19 @@ async fn setup(handle: AppHandle) -> AppState {
         warn!("failed to sync autostart state: {e}");
     }
 
+    // Determine whether the connected server has the Store enabled. Defaults to
+    // disabled on any failure so the client never points at an unavailable
+    // Store.
+    let store_enabled = match app_status {
+        AppStatus::SignedIn => auth::fetch_store_enabled().await,
+        _ => false,
+    };
+
     AppState {
         status: app_status,
         user,
         umu_state,
+        store_enabled,
     }
 }
 
@@ -273,6 +285,13 @@ pub fn run() {
             saves::restore_save_version,
             saves::set_save_version_pinned,
             saves::resolve_save_conflict,
+            // Local import: bring your own game files into the depot
+            imports::start_game_import,
+            imports::cancel_game_import,
+            imports::detect_launcher_installs,
+            // Launcher play: run the copy the storefront owns, in place
+            launcher_play::play_launcher_install,
+            launcher_play::stop_launcher_install,
             // Profiles
             profiles::fetch_profiles,
             profiles::create_profile,

@@ -2,7 +2,7 @@
   <div class="h-16 bg-surface-950 flex flex-row justify-between">
     <div class="flex flex-row grow items-center pl-5 pr-2 py-3">
       <div class="inline-flex items-center gap-x-10">
-        <NuxtLink to="/store">
+        <NuxtLink v-if="state?.storeEnabled" to="/store">
           <Wordmark class="h-8 mb-0.5" />
         </NuxtLink>
         <nav class="inline-flex items-center mt-0.5">
@@ -56,30 +56,36 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 const window = getCurrentWindow();
 const state = useAppState();
 
-const navigation: Array<NavigationItem> = [
-  {
-    prefix: "/store",
-    route: "/store",
-    label: "Store",
-  },
-  {
-    prefix: "/library",
-    route: "/library",
-    label: "Library",
-  },
-  {
-    prefix: "/community",
-    route: "/community",
-    label: "Community",
-  },
-  {
-    prefix: "/news",
-    route: "/news",
-    label: "News",
-  },
-];
+const navigation = computed(() => {
+  const items: Array<NavigationItem> = [];
+  if (state.value?.storeEnabled) {
+    items.push({
+      prefix: "/store",
+      route: "/store",
+      label: "Store",
+    });
+  }
+  items.push(
+    {
+      prefix: "/library",
+      route: "/library",
+      label: "Library",
+    },
+    {
+      prefix: "/community",
+      route: "/community",
+      label: "Community",
+    },
+    {
+      prefix: "/news",
+      route: "/news",
+      label: "News",
+    },
+  );
+  return items;
+});
 
-const { currentNavigation } = useCurrentNavigationIndex(navigation);
+const { currentNavigation } = useCurrentNavigationIndex(navigation.value);
 
 const quickActions: Array<QuickActionNav> = [
   {

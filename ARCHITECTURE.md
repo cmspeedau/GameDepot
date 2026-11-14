@@ -45,7 +45,7 @@ Keep control-plane metadata and high-volume bytes separate. Current repository c
 
 ## 2. Store Ingestion: Adapter Contract
 
-An adapter is a narrow provider-specific boundary that authenticates, discovers owned products/builds, acquires allowed source assets and reports normalized results. External references include GOGDL/Legendary, `Starkka15/Optima` for Ubisoft Connect, and `ArmchairDevelopers/Maxima` for EA App. Optima and Maxima are reference-only for the in-repo Ubisoft and EA cleanroom implementations; no code is copied. Evaluate references for provider terms and security assumptions, and do not treat an adapter's success status as proof of verified content.
+An adapter is a narrow provider-specific boundary that authenticates, discovers owned products/builds, acquires allowed source assets and reports normalized results. External references include GOGDL/Legendary, `Starkka15/Optima` for Ubisoft Connect, and `ArmchairDevelopers/Maxima` for EA App behavior. These references are reference-only for the in-repo implementations; no code is copied. Evaluate references for provider terms and security assumptions, and do not treat an adapter's success status as proof of verified content.
 
 ```text
  Account link / authorization
@@ -95,7 +95,7 @@ The `feat/disc-set-support` branch adds split-archive detection for `.7z.001` ch
 | Legendary / Epic interfaces | Epic library/build discovery and content acquisition. | Normalize manifest/build output; independently validate chunks and assembled files. |
 | Optima (`Starkka15/Optima`) | Headless Ubisoft Connect reference for the cleanroom adapter implemented in-repo. | External reference only; no code is copied. The in-repo implementation uses documented UbiServices HTTP endpoints (`public-ubiservices.ubi.com`, `api-uplayv2.ubi.com`, `uplaypc-dns.ubi.com`). Protect account/session state and follow Ubisoft access terms. |
 | `YoobieRE/ubisoft-demux-node` (MIT) | Protocol reference for Ubisoft Connect's protobuf Demux API (ownership licenses, download manifests, install runs). | Documentation/reference only, not a dependency. Useful to validate wire-format assumptions and as a fallback acquisition route if the HTTP endpoints change. Reading this MIT-licensed material means the Ubisoft adapter is reference-assisted rather than strictly cleanroom; this is an explicit, documented decision. |
-| Maxima (`ArmchairDevelopers/Maxima`) | EA App cleanroom DIP streamer design reference for the in-repo adapter. | Reference only; no code is copied. The in-repo implementation uses Nucleus OIDC, EA entitlement/discovery services, remote ZIP central-directory parsing and range-based DIP acquisition. |
+| Maxima (`ArmchairDevelopers/Maxima`) | EA App behavior reference (install records, DIP handshake, launcher launch) for the launcher-based EA content model. | Reference only; no code is copied. The former in-repo DIP acquisition streamer was removed in November 2026: its remote-ZIP premise was never verified against live services, and files now arrive via desktop import of the player's own launcher install. |
 | Manual import | User-provided installer/assets and metadata. | Same staging, path safety, grouping, validation and publication gates. |
 
 These adapters describe ingestion of authorized assets; they do not bypass DRM or grant rights to redistribute content. Prefer supported interfaces and make account authorization and legal responsibility explicit.
@@ -246,52 +246,54 @@ Emit immutable DropletManifest (`depot/manifests/{sha256}.json`)
    - Ubisoft's HTTP endpoints are undocumented and may drift; `ubisoft-demux-node`'s Demux protobuf schemas are retained as the documented fallback acquisition route.
    - Verification against live Ubisoft services is still outstanding; the hermetic suites validate contract behavior only.
 
-### Phase 2 EA App Ingestion (cleanroom, reference-only)
+### Phase 2 EA App Content (launcher-based, reference-only)
 
-EA App ingestion is implemented as an in-repo provider adapter for authorized account entitlements and raw DIP content files. The implementation was written cleanroom; `ArmchairDevelopers/Maxima` is an architecture reference only, and no code is copied. Authentication uses Nucleus OIDC over plain HTTP to `accounts.ea.com`; entitlement and discovery calls use `ecommerce2.dm.origin.com` and the Juno GraphQL service-aggregation layer at `service-aggregation-layer.juno.ea.com`.
+EA App content follows the launcher-based model instead of a server-side acquisition adapter: players already own the files and their EA App keeps them current, so the desktop client imports those existing installs into the depot and can also play them through the launcher. The files arrive once, from the download the launcher had to perform anyway, and the depot then serves everyone else with delta updates. The former in-repo cleanroom DIP streamer (remote ZIP central-directory parsing and range-based entry acquisition) was removed in November 2026: its ZIP archive premise was never verified against live EA services, EA's own client does not distribute plain ZIPs, and the launcher-based path covers the same need without the unverified protocol surface.
+
+Server-side authentication and discovery are retained unchanged: Nucleus OIDC over plain HTTP to `accounts.ea.com`, EA Help sessions for cookie-backed sign-in, and entitlement/catalog calls on `ecommerce2.dm.origin.com` plus the Juno GraphQL service-aggregation layer at `service-aggregation-layer.juno.ea.com`. They identify what an account owns so titles can be linked in the catalog and matched against desktop imports.
 
 ```text
-Authorize via Nucleus OIDC (`accounts.ea.com`, plain HTTP)
+EA App keeps its installs current (the launcher's job)
         |
         v
-Discover entitlements and title/build metadata
-(`ecommerce2.dm.origin.com` + Juno GraphQL)
+Desktop detects installs from EA App records
+(Windows ProgramData, or inside a umu storefront prefix)
         |
         v
-Resolve ContentService.download_url for DIP content
+Hash to fixed 4 MiB CAS objects -> upload only what the depot lacks
         |
         v
-Parse remote ZIP central directory (bounded memory)
+Commit the release manifest (admin-gated, provenance recorded)
         |
         v
-HTTP Range-fetch each entry -> inflate -> verify CRC32
-        |
-        v
-Stream raw files into 4 MiB GameDepot CAS
-        |
-        v
-Emit immutable DropletManifest
+Resync ships the diff after each launcher patch;
+everyone else installs and updates from the depot
 ```
 
-#### Implemented EA App Modules (`server/server/utils/ea/`)
+As built (November 2026), the import contract is provider-neutral and lives in two halves. The server half is `server/server/utils/import/session.ts`: `openImportSession` validates the declaration (logical paths, sizes, permission modes, per-chunk digests over the fixed 4 MiB chunking) and answers with the CAS objects it lacks; `storeImportedObject` re-hashes every arriving stream against its declared digest before the object lands; `commitImportSession` requires a complete set, then writes the `gamedepot-droplet` manifest, the provenance record and a Manual `GameVersion` pinned to `casManifestDigest` through `utils/import/db.ts`. Because a chunked version has no folder on disk, `versionPath` is null and disk size reads from the manifest. The routes are desktop-auth client routes under `api/v1/client/depot/import/session`, gated on the account's admin flag rather than on system ACLs, because a desktop session authenticates as a client JWT. The desktop half is the `importer` crate: `scan.rs` reproduces the server's chunking byte-for-byte (pinned by tests on both sides), and `engine.rs` runs declare → upload-the-diff → commit with bounded concurrency, per-object retry and cancellation.
 
-The following EA modules are implemented under `server/server/utils/ea/`:
+Detection is a thin per-launcher recipe on top of that engine, in `desktop/src-tauri/importer/src/recipes/`: each storefront answers the same question - which folders hold its installs - from the files it wrote, whether that is the EA app's INI records, Steam's `libraryfolders.vdf`, Ubisoft Connect's settings YAML, Epic's per-game `.item` manifests, or GOG's and Rockstar's conventional roots, and every drive letter resolves through the prefix's own drive links, so a umu or Wine storefront prefix and a real Windows install are the same search. A folder is an install only if it contains a non-redistributable executable, and a detected install only ever prefills the import form - the publish decision stays with the admin pressing the button.
+
+The same detection answers the second half of the model, play: each install records the entry point the recipe found and the prefix that holds it, and the desktop runs that copy where it lies - natively on Windows, through umu-run and Proton on Linux, in the storefront's own prefix when the install was found in one (`desktop/src-tauri/src/launcher_play.rs`) - and files the session's playtime under the catalog game the title matches. No second copy is made: the file-owner player and the depot's downloader share the economy the launcher already paid for. Steam is the one row whose honest Play is not an exec: detection reads the library's `appmanifest_<appid>.acf` records, so a detected Steam install knows its app id, and when this machine's native client owns that id (its own manifest, a file-only check) Play and Stop are the client's own `steam://run` and `steam://stop` - Steamworks content wants its client up, and the client is the one process that knows how to start and stop its own games.
+
+An Epic depot copy also carries the record Epic's own tools look for. At install completion, a release catalogued as `epic-<appid>` gets the install manifest the launcher would have written - a `.item` file naming the app id and a conventional `Program Files/Epic Games` location, inside the `ProgramData/Epic/EpicGamesLauncher/Data` layout, in the game's own umu prefix - with a symlink from that Windows path to the real install directory so the record describes content living anywhere on the Linux filesystem (`desktop/src-tauri/games/src/epic_seed.rs`, the Heroic/Lutris pattern for sideloads). The seed is best-effort by design: the bootstrapper that consults it is the reason it exists, but an install is complete with or without it, and the same helper will seed the shared storefront prefix when scripted handoff arrives.
+
+Providers divide by who keeps a release current. **Node-owned** - GOG, Epic, Ubisoft Connect: the server's acquisition adapters pull build content from the provider CDN, the depot copy is what everyone installs, and it plays through Drop's own launch path with no storefront installed anywhere. Freshness is the node's job too: `api/admin/depot/{gog,ubisoft}/check-updates` asks the stored connection what the account is entitled to now, and because the acquisition names each imported version with the provider's own build identity (GOG's `versionName`, Ubisoft's deploy manifest SHA-1) recorded on the `gog-<id>` / `ubi-<id>` catalog row, the check is that identity compared against the newest entitled build - `utils/depot/update-check.ts` holds the pure diff and the catalog scan, and a newer build is queued through `utils/depot/ingest-queue.ts`, the very task pipeline the admin button uses. The scan itself lives in `utils/depot/update-scan.ts` and answers from two doors: the admin route and the daily `depot:check-updates` scheduled task, so the button is "check me now" over the same code the calendar runs by itself - a provider with no stored connection is a skip, not a failure. Titles owned but never acquired are reported, never fetched. (Epic's checker waits on its acquisition decoder; the entitlements and library calls are already there.) **Launcher-owned** - EA and Rockstar, plus Steam, whose content is not obtainable without its client: there is no server-side acquisition to keep current, so the player's launcher install is the file source, import and Resync move it into the depot, and Play runs that copy directly. The desktop states the same division on each detected row: node-owned providers offer Upload (the copy seeds a depot release the node will update itself), launcher-owned ones offer Resync (their launcher copy is the ongoing update path).
+
+How a release starts is recorded with it, not guessed at launch: `GameVersion.runsStandalone` says whether the build runs on its own (true: DRM-free, anonymous-EOS, self-starting) or only with its store client authenticating (false: legit EA, Rockstar, Ubisoft and Steam builds). It is declared, never detected - an imported release carries it from the open-session call, where the import form defaults it per launcher and the admin corrects it for the bytes in front of them, and admin-published versions carry it the same way; it syncs inside the version document (whose `versionPath` the desktop model now treats as optional, since chunk-store versions have never had one). The launch path consults it: direct exec refuses a false build with `ProcessError::StoreClientRequired` rather than letting a DRM refusal surface as a failed start, while Play of the launcher's own detected copy stays flag-free because those files run direct whatever the version says. The storefront runner that plays false builds through their client is the next piece of the model; until then the refusal names its reason.
+
+#### Retained EA App Modules (`server/server/utils/ea/`)
 
 1. **EA API Client (`client.ts`)**:
-   - Nucleus OIDC authentication, entitlement/discovery calls, and download-URL resolution through `ContentService.download_url`.
+   - Nucleus OIDC authentication and entitlement/discovery calls.
    - Keep credentials, tokens and signed URLs scoped and redacted; treat provider responses as untrusted.
-2. **Remote ZIP Manifest Parser (`zip-manifest.ts`)**:
-   - Parse the remote ZIP end-of-central-directory and central-directory records using bounded memory, without downloading the full archive.
-   - Retain each entry's `dataOffset`, `compressedSize`, `uncompressedSize` and `compressionMethod`; validate offsets, lengths, paths and resource limits before acquisition.
-3. **DIP Game Streamer (`game-streamer.ts`)**:
-   - Use HTTP Range requests to fetch each entry's compressed bytes, inflate the entry, verify its declared uncompressed size and CRC32, then stream the raw file to the 4 MiB CAS and emit a `DropletManifest` like GOG, Epic and Ubisoft.
-   - CRC32 is checked per entry and any mismatch, malformed data, or exhausted retry fails closed. This improves on Maxima's commented-out CRC32 verification and its behavior of silently returning `Ok` after five failed tries.
-
-The per-file Deflate representation in EA's DIP is discarded at ingest; GameDepot applies its own documented compression and chunking policy. This yields provider-independent content objects, supports cross-provider deduplication, and makes idempotent resync depend on verified content rather than EA's source encoding. Skip the touchup installer and ingest the DIP files directly. Per-title caveat: a few games patch files after touchup, so directly streamed DIP bytes may not be byte-identical to the final touched-up installation.
+2. **Entitlement Discovery (`library.ts`)**:
+   - Normalizes owned titles (live nested and flat entitlement layouts, EA Play player-shell listings, optional Juno catalog search) into discovery rows carrying id, title and offer id for catalog identity matching.
+   - The per-entitlement `downloadLink` field went out with the removed ingestion path.
 
 Live EA services (Nucleus, ecommerce2 and Juno) are unverified; hermetic `node:test` suites validate contract behavior only.
 
-Maxima reference: [`ArmchairDevelopers/Maxima`](https://github.com/ArmchairDevelopers/Maxima), specifically `maxima-lib/src/content/downloader.rs`, `manager.rs`, `dip.rs` and `endpoints.rs`. Reference only; the EA adapter is cleanroom and no source code is copied.
+Maxima reference: [`ArmchairDevelopers/Maxima`](https://github.com/ArmchairDevelopers/Maxima), specifically `maxima-lib/src/content/downloader.rs`, `manager.rs`, `dip.rs` and `endpoints.rs`. Reference only for EA App launcher behavior; no source code is copied.
 
 ## 3. Manifest-Driven Depot and Chunk Delivery
 
@@ -426,4 +428,4 @@ A provider-neutral launch request should carry executable path, arguments, worki
 
 ## 7. Roadmap Boundary
 
-Planned evolution includes headless GOG/Epic/Ubisoft/EA App ingestion; the EA DIP streamer is an in-repo cleanroom design with Maxima as reference-only and no code copied; a provider-neutral manifest/chunk depot informed by Steam-style DepotDownloader patterns; seekable-zstd packaging and delta updates; and optional UMU/Proton launch on Linux/Steam Deck. Ubisoft Connect ingestion is implemented on `develop` (cleanroom, reference-assisted by the MIT-licensed `ubisoft-demux-node` protocol schemas; Optima remains reference-only); a Demux-socket fallback acquisition route is retained as a documented contingency if the HTTP endpoints drift. Mesh delivery and these external integrations should be marked implemented only after corresponding code, tests and security/operational controls exist. Update this document and the roadmap as each milestone changes status.
+Planned evolution includes headless GOG/Epic/Ubisoft App ingestion; a launcher-based EA App content model (the former DIP streamer is removed; content arrives by importing the player's own launcher installs, with play handed to the launcher where a second copy would be waste); a provider-neutral manifest/chunk depot informed by Steam-style DepotDownloader patterns; seekable-zstd packaging and delta updates; and optional UMU/Proton launch on Linux/Steam Deck. Ubisoft Connect ingestion is implemented on `develop` (cleanroom, reference-assisted by the MIT-licensed `ubisoft-demux-node` protocol schemas; Optima remains reference-only); a Demux-socket fallback acquisition route is retained as a documented contingency if the HTTP endpoints drift. Mesh delivery and these external integrations should be marked implemented only after corresponding code, tests and security/operational controls exist. Update this document and the roadmap as each milestone changes status.
