@@ -199,35 +199,53 @@ import {
   MenuItems,
 } from "@headlessui/vue";
 import type { NavigationItem } from "../composables/types";
+import type { Settings } from "~/server/internal/utils/types";
 import { Bars3Icon } from "@heroicons/vue/24/outline";
 import { XMarkIcon } from "@heroicons/vue/24/solid";
 
 const router = useRouter();
 const { t } = useI18n();
 
-const homepageURL = "/store";
-const navigation: Ref<Array<NavigationItem>> = computed(() => [
-  {
-    prefix: "/store",
-    route: "/store",
-    label: t("store.title"),
-  },
-  {
-    prefix: "/library",
-    route: "/library",
-    label: t("userHeader.links.library"),
-  },
-  {
-    prefix: "/community",
-    route: "/community",
-    label: t("userHeader.links.community"),
-  },
-  {
-    prefix: "/news",
-    route: "/news",
-    label: t("userHeader.links.news"),
-  },
-]);
+const settings = ref<Settings | null>(null);
+onMounted(async () => {
+  try {
+    settings.value = await $dropFetch<Settings>("/api/v1/settings");
+  } catch (e) {
+    settings.value = null;
+  }
+});
+const storeEnabled = computed(() => settings.value?.store?.enabled ?? false);
+
+const homepageURL = computed(() => (storeEnabled.value ? "/store" : "/library"));
+
+const navigation: Ref<Array<NavigationItem>> = computed(() => {
+  const items: Array<NavigationItem> = [];
+  if (storeEnabled.value) {
+    items.push({
+      prefix: "/store",
+      route: "/store",
+      label: t("store.title"),
+    });
+  }
+  items.push(
+    {
+      prefix: "/library",
+      route: "/library",
+      label: t("userHeader.links.library"),
+    },
+    {
+      prefix: "/community",
+      route: "/community",
+      label: t("userHeader.links.community"),
+    },
+    {
+      prefix: "/news",
+      route: "/news",
+      label: t("userHeader.links.news"),
+    },
+  );
+  return items;
+});
 
 const currentPageIndex = useCurrentNavigationIndex(navigation.value);
 

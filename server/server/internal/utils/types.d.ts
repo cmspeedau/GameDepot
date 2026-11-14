@@ -14,6 +14,7 @@ type EnumDictionary<T extends string | symbol | number, U> = {
 
 export type Settings = {
   store: {
+    enabled: boolean;
     showGamePanelTextDecoration: boolean;
   };
   generalSettings: {

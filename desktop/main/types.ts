@@ -26,6 +26,7 @@ export type AppState = {
   status: AppStatus;
   umuState: UmuState;
   user?: User;
+  storeEnabled?: boolean;
 };
 
 export type Game = {

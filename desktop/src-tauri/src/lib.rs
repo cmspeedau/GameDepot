@@ -137,6 +137,7 @@ async fn setup(handle: AppHandle) -> AppState {
             status: AppStatus::NotConfigured,
             user: None,
             umu_state,
+            store_enabled: false,
         };
     }
 
@@ -182,10 +183,19 @@ async fn setup(handle: AppHandle) -> AppState {
         warn!("failed to sync autostart state: {e}");
     }
 
+    // Determine whether the connected server has the Store enabled. Defaults to
+    // disabled on any failure so the client never points at an unavailable
+    // Store.
+    let store_enabled = match app_status {
+        AppStatus::SignedIn => auth::fetch_store_enabled().await,
+        _ => false,
+    };
+
     AppState {
         status: app_status,
         user,
         umu_state,
+        store_enabled,
     }
 }
 

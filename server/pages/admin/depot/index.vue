@@ -10,12 +10,11 @@
           Admin · Depot
         </p>
         <h1 class="mt-2 text-3xl font-semibold tracking-tight">
-          Catalog discovery
+          Catalog library
         </h1>
         <p class="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
-          Discover owned products and review their metadata before adding them
-          to your depot. Discovery never publishes or downloads content by
-          itself.
+          Load owned products and review their metadata before adding them to
+          your depot. Loading never publishes or downloads content by itself.
         </p>
       </div>
       <span
@@ -42,7 +41,7 @@
       </span>
     </header>
 
-    <!-- Provider selector: minimal addition; GOG flow below remains untouched. -->
+    <!-- Provider selector: each provider loads its own owned titles. -->
     <nav aria-label="Store provider" class="flex flex-wrap gap-2">
       <button
         v-for="provider in providers"
@@ -422,57 +421,38 @@
           <div
             class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-300"
           >
-            <MagnifyingGlassIcon class="h-5 w-5" aria-hidden="true" />
+            <ArchiveBoxIcon class="h-5 w-5" aria-hidden="true" />
           </div>
           <div>
-            <h2 class="text-base font-semibold">Discover catalog entries</h2>
+            <h2 class="text-base font-semibold">Owned GOG titles</h2>
             <p class="mt-1 text-sm leading-6 text-zinc-400">
-              Search by title or provide a GOG product ID. Connect a supported
-              account or catalog adapter to retrieve owned products and
-              available releases.
+              Load the titles owned by a GOG account. Connect a supported
+              account or catalog adapter, then inspect available releases
+              before choosing what to ingest.
             </p>
           </div>
         </div>
 
-        <form class="mt-6 space-y-4" @submit.prevent="discoverGog">
-          <div>
-            <label
-              for="gog-query"
-              class="mb-2 block text-sm font-medium text-zinc-300"
-              >Title or GOG product ID</label
+        <form class="mt-6" @submit.prevent="loadGogLibrary">
+          <div class="flex flex-col gap-3 sm:flex-row sm:justify-end">
+            <button
+              type="submit"
+              :disabled="loading || !activeConnection"
+              class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
-            <div class="flex flex-col gap-3 sm:flex-row">
-              <input
-                id="gog-query"
-                v-model.trim="gogQuery"
-                type="search"
-                autocomplete="off"
-                placeholder="e.g. product name or numeric ID"
-                class="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3.5 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              <ArrowPathIcon
+                v-if="loading"
+                class="h-4 w-4 animate-spin"
+                aria-hidden="true"
               />
-              <button
-                type="submit"
-                :disabled="loading || !gogQuery"
-                class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <ArrowPathIcon
-                  v-if="loading"
-                  class="h-4 w-4 animate-spin"
-                  aria-hidden="true"
-                />
-                <MagnifyingGlassIcon
-                  v-else
-                  class="h-4 w-4"
-                  aria-hidden="true"
-                />
-                {{ loading ? "Searching…" : "Discover" }}
-              </button>
-            </div>
+              <ArchiveBoxIcon v-else class="h-4 w-4" aria-hidden="true" />
+              {{ loading ? "Loading…" : "Load owned games" }}
+            </button>
           </div>
           <p
             v-if="errorMessage"
             role="alert"
-            class="rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-200"
+            class="mt-4 rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-200"
           >
             {{ errorMessage }}
           </p>
@@ -511,7 +491,7 @@
           class="mt-5 border-t border-zinc-800 pt-4 text-xs leading-5 text-zinc-500"
         >
           Store credentials belong on the server: use Connect account above and
-          discovery endpoints will pick the stored credential up by themselves.
+          the load endpoints will pick the stored credential up by themselves.
           Tokens are never echoed back to the browser.
         </p>
       </aside>
@@ -525,7 +505,7 @@
         <div
           class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-300"
         >
-          <MagnifyingGlassIcon class="h-5 w-5" aria-hidden="true" />
+          <ArchiveBoxIcon class="h-5 w-5" aria-hidden="true" />
         </div>
         <div class="grow">
           <h2 class="text-base font-semibold">
@@ -562,7 +542,7 @@
               class="h-4 w-4 animate-spin"
               aria-hidden="true"
             />
-            <MagnifyingGlassIcon v-else class="h-4 w-4" aria-hidden="true" />
+            <ArchiveBoxIcon v-else class="h-4 w-4" aria-hidden="true" />
             {{ loading ? "Loading…" : "Load owned titles" }}
           </button>
         </div>
@@ -583,7 +563,7 @@
         class="flex flex-col gap-3 border-b border-zinc-800 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"
       >
         <div>
-          <h2 class="font-semibold">Discovered products</h2>
+          <h2 class="font-semibold">Owned products</h2>
           <p class="mt-1 text-sm text-zinc-500">
             Review identity and available content before choosing what to
             ingest.
@@ -635,12 +615,11 @@
           aria-hidden="true"
         />
         <h3 class="mt-4 text-sm font-semibold text-zinc-200">
-          No products discovered
+          No owned titles
         </h3>
         <p class="mx-auto mt-2 max-w-md text-sm leading-6 text-zinc-500">
-          Connect the {{ activeProvider.label }} discovery provider, then search
-          for a title or sync your owned library. Results will appear here for
-          review.
+          Connect the {{ activeProvider.label }} account, then load your owned
+          library. Results will appear here for review.
         </p>
       </div>
 
@@ -711,7 +690,6 @@ import {
   ArchiveBoxIcon,
   ArrowDownTrayIcon,
   ArrowPathIcon,
-  MagnifyingGlassIcon,
   ShieldCheckIcon,
 } from "@heroicons/vue/24/outline";
 
@@ -780,7 +758,6 @@ const activeProvider = computed(
   () => providers.find((p) => p.id === activeProviderId.value) || providers[0],
 );
 
-const gogQuery = ref("");
 const ubisoftUserId = ref("");
 const eaSearch = ref("");
 // Connect-form fields, cleared as soon as the server accepts the credentials.
@@ -840,7 +817,9 @@ const connectionTone = computed(() =>
 );
 
 const providerDescription = computed(() =>
-  activeProviderId.value === "epic"
+  activeProviderId.value === "gog"
+    ? "Load the titles owned by a GOG account. Connect a supported account or catalog adapter, then inspect available releases before choosing what to ingest."
+    : activeProviderId.value === "epic"
     ? "Connect an Epic account with a refresh token so the server can keep its entitlements fresh. Loads the entitlements owned by that account; ingest streams the raw depot files directly into the depot."
     : activeProviderId.value === "ea"
       ? "Paste the Cookie header from a signed-in help.ea.com tab: the server lists your owned games through that EA Help session (no OAuth client exists for EA) and asks for a fresh copy when EA expires it. EA titles join the depot by importing an existing launcher install from the desktop client, so this page links and lists what the account owns."
@@ -1068,8 +1047,8 @@ async function disconnect() {
 }
 const steps = [
   {
-    title: "Discover",
-    description: "Find owned GOG products and inspect available metadata.",
+    title: "Load owned titles",
+    description: "Load owned GOG products and inspect available metadata.",
   },
   {
     title: "Review",
@@ -1094,17 +1073,14 @@ function resetError() {
   notice.value = "";
 }
 
-async function discoverGog() {
-  if (!gogQuery.value) return;
+async function loadGogLibrary() {
+  if (!activeConnection.value) return;
   loading.value = true;
   resetError();
   try {
     const response = await $fetch<{
       games: Array<{ id: string; title: string }>;
-    }>("/api/admin/depot/gog/library", {
-      method: "GET",
-      query: { title: gogQuery.value },
-    });
+    }>("/api/admin/depot/gog/library", { method: "GET" });
     products.value = response.games.map((game) => ({
       id: game.id,
       title: game.title,
@@ -1113,8 +1089,8 @@ async function discoverGog() {
     products.value = [];
     errorMessage.value =
       error instanceof Error
-        ? `GOG discovery is not available: ${error.message}`
-        : "GOG discovery is not available. Configure a server-side GOG provider and try again.";
+        ? `GOG library is not available: ${error.message}`
+        : "GOG library is not available. Configure a server-side GOG provider and try again.";
   } finally {
     loading.value = false;
   }

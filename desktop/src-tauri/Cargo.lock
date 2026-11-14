@@ -5023,6 +5023,7 @@ dependencies = [
  "reqwest-middleware 0.4.2",
  "reqwest-websocket",
  "serde",
+ "serde_json",
  "serde_with",
  "tauri",
  "url",

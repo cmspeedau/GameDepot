@@ -114,6 +114,31 @@ pub async fn fetch_user() -> Result<User, RemoteAccessError> {
         .map_err(std::convert::Into::into)
 }
 
+/// Fetches whether the connected server has the Store enabled. Returns false on
+/// any failure so callers can safely treat the Store as unavailable.
+pub async fn fetch_store_enabled() -> bool {
+    let url = match generate_url(&["/api/v1/settings"], &[]) {
+        Ok(u) => u,
+        Err(_) => return false,
+    };
+    let response = match make_authenticated_get(url).await {
+        Ok(resp) => resp,
+        Err(_) => return false,
+    };
+    if response.status() != 200 {
+        return false;
+    }
+    let value: serde_json::Value = match response.json().await {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    value
+        .get("store")
+        .and_then(|s| s.get("enabled"))
+        .and_then(|e| e.as_bool())
+        .unwrap_or(false)
+}
+
 pub fn auth_initiate_logic(mode: String) -> Result<String, RemoteAccessError> {
     let base_url = {
         let db_lock = borrow_db_checked();
