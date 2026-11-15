@@ -110,6 +110,9 @@ If a change needs to cross one of these lines, it is an ADR, not a patch.
 ## Fork boundary
 
 - Open pull requests against this repository only.
+- The pre-rewrite code and its history are archived at `cmspeedau/GameDepot-legacy`.
+  That repository is read-only. Use it as the reference for porting, never as a push
+  target. `docs/PROVENANCE.md` records the last commit and the license chain.
 - Do not add an upstream remote for pushing. Fetch reference code from a throwaway
   clone instead.
 - Do not publish to upstream namespaces.

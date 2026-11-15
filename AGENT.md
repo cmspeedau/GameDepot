@@ -77,8 +77,10 @@ introduced from failures that were already there.
 This repository is an independent fork. Its work does not go upstream.
 
 - Open pull requests against **`cmspeedau/GameDepot`**, not `Drop-OSS/drop`.
+- The pre-rewrite implementation is archived at `cmspeedau/GameDepot-legacy`. It is
+  read-only: read it for reference, never push to it. See `docs/PROVENANCE.md`.
 - `origin` is the only remote. Do not add upstream as a push target. For reference
-  code, use a throwaway clone under `/tmp`.
+  code, clone the archived repository into `/tmp` instead.
 - Do not publish to upstream namespaces: `ghcr.io/drop-oss/*`, the `drop-oss-app*` AUR
   packages, or `droposs.org` assets.
 - Keep the AGPL notices intact. `LICENSE` and `NOTICE` are not disposable.

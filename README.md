@@ -97,6 +97,7 @@ For building:
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Runtime topology, modules, data model, formats |
 | [`docs/CLIENT-API.md`](docs/CLIENT-API.md) | HTTP contract used by the desktop client |
 | [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | Deployment, configuration, backups, upgrades |
+| [`docs/PROVENANCE.md`](docs/PROVENANCE.md) | Upstream attribution and archived history |
 | [`docs/adr/`](docs/adr/README.md) | Decision records and the reasoning behind them |
 | [`AGENT.md`](AGENT.md) | Rules for AI agents and humans changing this repo |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Branching, commits, review, fork boundary |
