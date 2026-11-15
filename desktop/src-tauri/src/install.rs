@@ -15,7 +15,7 @@ pub enum InstallError {
     Io(String),
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, serde::Serialize)]
 pub struct InstallReport {
     pub files: Vec<String>,
     pub bytes: u64,

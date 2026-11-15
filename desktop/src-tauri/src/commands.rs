@@ -1,0 +1,107 @@
+use std::sync::Arc;
+
+use tauri::State;
+
+use crate::api::{ApiClient, LibraryItem, Me, PairingClaim, PairingInitiate};
+use crate::auth;
+use crate::config::Settings;
+use crate::download::SystemSleeper;
+use crate::install::InstallReport;
+use crate::installer::Installer;
+use crate::state::AppState;
+
+fn e<E: std::fmt::Display>(err: E) -> String {
+    err.to_string()
+}
+
+#[tauri::command]
+pub async fn settings_get(state: State<'_, AppState>) -> Result<Settings, String> {
+    Ok(state.settings())
+}
+
+#[tauri::command]
+pub async fn settings_set(
+    state: State<'_, AppState>,
+    settings: Settings,
+) -> Result<(), String> {
+    state.save_settings(&settings)
+}
+
+#[tauri::command]
+pub async fn pair_initiate(
+    state: State<'_, AppState>,
+    name: String,
+    platform: String,
+) -> Result<PairingInitiate, String> {
+    let client = state.client()?;
+    client.initiate_pairing(&name, &platform).await.map_err(e)
+}
+
+#[tauri::command]
+pub async fn pair_complete(
+    state: State<'_, AppState>,
+    code: String,
+) -> Result<PairingClaim, String> {
+    let client = state.client()?;
+    auth::complete(&client, &*state.tokens, &code).await.map_err(e)
+}
+
+#[tauri::command]
+pub async fn sign_out(state: State<'_, AppState>) -> Result<(), String> {
+    state.tokens.clear().map_err(e)
+}
+
+#[tauri::command]
+pub async fn signed_in(state: State<'_, AppState>) -> Result<Option<Me>, String> {
+    let client = state.client()?;
+    match client.me().await {
+        Ok(me) => Ok(Some(me)),
+        Err(crate::api::ApiError::Api { status: 401, .. }) => Ok(None),
+        Err(other) => Err(e(other)),
+    }
+}
+
+#[tauri::command]
+pub async fn library_list(state: State<'_, AppState>) -> Result<Vec<LibraryItem>, String> {
+    state.client()?.library().await.map_err(e)
+}
+
+#[tauri::command]
+pub async fn install_version(
+    state: State<'_, AppState>,
+    game_id: String,
+    version_id: String,
+) -> Result<InstallReport, String> {
+    let settings = state.settings();
+    let root = state
+        .db_path
+        .parent()
+        .ok_or_else(|| "no state root".to_string())?;
+    let dest = settings.download_dir.join(&game_id);
+
+    let installer = Installer {
+        client: Arc::new(state.client()?),
+        store: state.store.clone(),
+        cache_dir: root.join("cache"),
+        concurrency: settings.concurrency.max(1),
+        max_attempts: 5,
+        sleeper: Arc::new(SystemSleeper),
+    };
+    installer
+        .install_version(&game_id, &version_id, &dest)
+        .await
+        .map_err(e)
+}
+
+#[tauri::command]
+pub async fn playtime_report(
+    state: State<'_, AppState>,
+    game_id: String,
+    seconds: u64,
+) -> Result<(), String> {
+    state
+        .client()?
+        .post_playtime(&game_id, seconds)
+        .await
+        .map_err(e)
+}

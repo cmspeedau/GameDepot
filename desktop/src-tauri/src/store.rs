@@ -1,19 +1,31 @@
 use std::collections::HashSet;
 use std::path::Path;
+use std::sync::Mutex;
 
 use rusqlite::{params, Connection};
 
 /// Local install state. Tracks which game versions are installed and, per version,
 /// which objects and files have been verified and written. The database holds no
 /// credentials; the bearer token lives in the OS keyring.
+///
+/// The connection is behind a mutex so `Store` is `Sync` (rusqlite's `Connection` is
+/// `Send` but not `Sync`). Guards are never held across an await.
 pub struct Store {
-    conn: Connection,
+    conn: Mutex<Connection>,
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
     #[error("sqlite: {0}")]
     Sql(#[from] rusqlite::Error),
+    #[error("store poisoned")]
+    Poisoned,
+}
+
+impl StoreError {
+    fn poisoned() -> StoreError {
+        StoreError::Poisoned
+    }
 }
 
 const SCHEMA: &str = "
@@ -44,13 +56,17 @@ impl Store {
         let conn = Connection::open(path)?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
         conn.execute_batch(SCHEMA)?;
-        Ok(Self { conn })
+        Ok(Self { conn: Mutex::new(conn) })
     }
 
     pub fn in_memory() -> Result<Self, StoreError> {
         let conn = Connection::open_in_memory()?;
         conn.execute_batch(SCHEMA)?;
-        Ok(Self { conn })
+        Ok(Self { conn: Mutex::new(conn) })
+    }
+
+    fn c(&self) -> Result<std::sync::MutexGuard<'_, Connection>, StoreError> {
+        self.conn.lock().map_err(|_| StoreError::poisoned())
     }
 
     /// Register (or refresh) an installed version and reset its progress rows to the
@@ -64,7 +80,8 @@ impl Store {
         object_shas: &[String],
         files: &[(String, String)],
     ) -> Result<(), StoreError> {
-        let tx = self.conn.unchecked_transaction()?;
+        let guard = self.c()?;
+        let tx = guard.unchecked_transaction()?;
         tx.execute(
             "INSERT INTO installed_version(version_id, game_id, digest, dest)
              VALUES (?1,?2,?3,?4)
@@ -90,7 +107,7 @@ impl Store {
     }
 
     pub fn mark_object_done(&self, version_id: &str, sha: &str) -> Result<(), StoreError> {
-        self.conn.execute(
+        self.c()?.execute(
             "INSERT INTO object_state(version_id, sha256, done) VALUES (?1,?2,1)
              ON CONFLICT(version_id, sha256) DO UPDATE SET done=1",
             params![version_id, sha],
@@ -99,7 +116,7 @@ impl Store {
     }
 
     pub fn mark_file_done(&self, version_id: &str, path: &str) -> Result<(), StoreError> {
-        self.conn.execute(
+        self.c()?.execute(
             "UPDATE file_state SET done=1 WHERE version_id=?1 AND path=?2",
             params![version_id, path],
         )?;
@@ -108,7 +125,8 @@ impl Store {
 
     /// Objects that are still pending for a version (done = 0).
     pub fn pending_objects(&self, version_id: &str) -> Result<Vec<String>, StoreError> {
-        let mut stmt = self.conn.prepare(
+        let guard = self.c()?;
+        let mut stmt = guard.prepare(
             "SELECT sha256 FROM object_state WHERE version_id=?1 AND done=0 ORDER BY sha256",
         )?;
         let rows = stmt.query_map(params![version_id], |r| r.get::<_, String>(0))?;
@@ -119,12 +137,11 @@ impl Store {
         Ok(out)
     }
 
-    /// Objects from `wanted` that are already marked done for this version. Used for
-    /// cross-version reuse: an object completed for a prior version need not be fetched
-    /// again, so track it under the new version too.
+    /// Objects marked done for this version. Used for cross-version reuse: an object
+    /// completed for a prior version need not be fetched again.
     pub fn done_set(&self, version_id: &str) -> Result<HashSet<String>, StoreError> {
-        let mut stmt = self
-            .conn
+        let guard = self.c()?;
+        let mut stmt = guard
             .prepare("SELECT sha256 FROM object_state WHERE version_id=?1 AND done=1")?;
         let rows = stmt.query_map(params![version_id], |r| r.get::<_, String>(0))?;
         let mut out = HashSet::new();
@@ -142,7 +159,8 @@ impl Store {
         to_version: &str,
         shas: &[String],
     ) -> Result<(), StoreError> {
-        let tx = self.conn.unchecked_transaction()?;
+        let guard = self.c()?;
+        let tx = guard.unchecked_transaction()?;
         for sha in shas {
             tx.execute(
                 "UPDATE object_state SET done=1
@@ -157,7 +175,7 @@ impl Store {
     }
 
     pub fn mark_complete(&self, version_id: &str) -> Result<(), StoreError> {
-        self.conn.execute(
+        self.c()?.execute(
             "UPDATE installed_version SET completed_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE version_id=?1",
             params![version_id],
         )?;
@@ -165,8 +183,8 @@ impl Store {
     }
 
     pub fn is_complete(&self, version_id: &str) -> Result<bool, StoreError> {
-        let mut stmt = self
-            .conn
+        let guard = self.c()?;
+        let mut stmt = guard
             .prepare("SELECT completed_at FROM installed_version WHERE version_id=?1")?;
         let mut rows = stmt.query(params![version_id])?;
         match rows.next()? {
@@ -179,7 +197,8 @@ impl Store {
     }
 
     pub fn installed_version_for_game(&self, game_id: &str) -> Result<Option<String>, StoreError> {
-        let mut stmt = self.conn.prepare(
+        let guard = self.c()?;
+        let mut stmt = guard.prepare(
             "SELECT version_id FROM installed_version WHERE game_id=?1 AND completed_at IS NOT NULL ORDER BY completed_at DESC LIMIT 1",
         )?;
         let mut rows = stmt.query(params![game_id])?;
@@ -190,10 +209,10 @@ impl Store {
     }
 
     pub fn uninstall(&self, version_id: &str) -> Result<(), StoreError> {
-        self.conn.execute("DELETE FROM object_state WHERE version_id=?1", params![version_id])?;
-        self.conn.execute("DELETE FROM file_state WHERE version_id=?1", params![version_id])?;
-        self.conn
-            .execute("DELETE FROM installed_version WHERE version_id=?1", params![version_id])?;
+        let guard = self.c()?;
+        guard.execute("DELETE FROM object_state WHERE version_id=?1", params![version_id])?;
+        guard.execute("DELETE FROM file_state WHERE version_id=?1", params![version_id])?;
+        guard.execute("DELETE FROM installed_version WHERE version_id=?1", params![version_id])?;
         Ok(())
     }
 }

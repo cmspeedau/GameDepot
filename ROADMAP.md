@@ -94,9 +94,13 @@ integrity check passes on a fresh publish.
       fetch and digest check, object download with verify-then-cache, file assembly, and
       store bookkeeping. Tested end to end against a fake `ApiClient` backed by the golden
       fixture, including a second install that resumes from the cache without refetching.
-- [~] Pairing UI, token storage in the OS keyring, sign-out. Pairing orchestration
-      (`auth::initiate` / `auth::complete`) and the keyring store compile; the flow is
-      tested against a mock client. The Vue pairing screen and a live keyring run are left.
+- [~] Pairing UI, token storage in the OS keyring, sign-out. A Vue screen drives
+      `pair_initiate` / `pair_complete` / `signed_in` / `sign_out`; the token lives in the
+      keyring. Logic is tested and the app compiles and type-checks, but a live desktop
+      session (and OS keyring) has not exercised it.
+- [x] Tauri command and state layer. `AppState` (mutex-guarded SQLite store, settings,
+      keyring) is managed and exposed via `settings_get/set`, `pair_*`, `signed_in`,
+      `sign_out`, `library_list`, `install_version`, `playtime_report`.
 - [~] Library fetch with local install state in SQLite. The install store (`store.rs`)
       and the API client (`api.rs`, `ApiClient` trait over reqwest) are built; the store
       is fully tested, the reqwest transport compiles but is exercised only against a

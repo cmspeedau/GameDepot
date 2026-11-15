@@ -5,7 +5,7 @@ use std::path::PathBuf;
 /// `server_url` and the bearer token are separate: the token lives in the OS keyring
 /// (see `auth`), never in this file.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 pub struct Settings {
     /// Instance origin, e.g. `https://games.example` (no trailing slash).
     pub server_url: String,
