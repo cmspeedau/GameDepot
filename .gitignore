@@ -11,6 +11,7 @@
 /library/
 /games/
 /.data/
+.data/
 /dev-data/
 
 # Go

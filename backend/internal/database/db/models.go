@@ -92,6 +92,14 @@ type Launch struct {
 	WorkingDir string
 }
 
+type Library struct {
+	ID        pgtype.UUID
+	Name      string
+	Path      string
+	Kind      string
+	CreatedAt pgtype.Timestamptz
+}
+
 type Object struct {
 	ID          pgtype.UUID
 	Sha256      []byte
@@ -111,6 +119,17 @@ type PairingCode struct {
 	ApprovedAt pgtype.Timestamptz
 	ClaimedAt  pgtype.Timestamptz
 	ClientID   pgtype.UUID
+}
+
+type Release struct {
+	ID          pgtype.UUID
+	GameID      pgtype.UUID
+	VersionID   pgtype.UUID
+	Digest      string
+	Manifest    []byte
+	TotalSize   int64
+	PublishedBy pgtype.UUID
+	PublishedAt pgtype.Timestamptz
 }
 
 type Session struct {

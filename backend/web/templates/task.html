@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Task - GameDepot</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body class="min-h-screen bg-zinc-950 text-zinc-100">
+  {{template "nav" .}}
+  <main class="mx-auto max-w-3xl px-6 py-8" hx-get="/dashboard/tasks/{{.Task.ID}}" hx-trigger="every 2s" hx-target="this" hx-swap="outerHTML">
+    <h1 class="text-xl font-semibold mb-2">Task {{.Task.ID}}</h1>
+    <p class="text-sm text-zinc-400 mb-2">{{.Task.Kind}} — {{.Task.State}}</p>
+    <div class="w-full bg-zinc-800 rounded h-2 mb-4">
+      <div class="bg-blue-600 h-2 rounded" style="width: {{pct .Task.Progress}}%"></div>
+    </div>
+    <pre class="text-xs text-zinc-300 whitespace-pre-wrap bg-zinc-900 rounded p-3">{{.Task.Log}}</pre>
+    {{if .Task.Error}}<p class="text-red-400 text-sm mt-2">{{.Task.Error}}</p>{{end}}
+  </main>
+</body>
+</html>

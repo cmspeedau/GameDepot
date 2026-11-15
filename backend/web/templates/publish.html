@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} - GameDepot</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body class="min-h-screen bg-zinc-950 text-zinc-100">
+  {{template "nav" .}}
+  <main class="mx-auto max-w-3xl px-6 py-8">
+    <h1 class="text-xl font-semibold mb-4">Publish release</h1>
+    {{template "flash" .}}
+    <form method="post" action="/dashboard/releases" class="space-y-4">
+      <input type="hidden" name="_csrf" value="{{.CSRF}}">
+      <label class="block">
+        <span class="text-sm">Game</span>
+        <select name="game_id" class="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2">
+          {{range .Games}}<option value="{{uuid .ID}}">{{.Name}}</option>{{end}}
+        </select>
+      </label>
+      <label class="block">
+        <span class="text-sm">Version id</span>
+        <input name="version_id" class="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2" required>
+      </label>
+      <label class="block">
+        <span class="text-sm">Source directory</span>
+        <input name="source_dir" class="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2" required>
+      </label>
+      <button class="rounded bg-blue-600 px-4 py-2 font-medium">Publish</button>
+    </form>
+  </main>
+</body>
+</html>

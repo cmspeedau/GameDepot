@@ -16,6 +16,7 @@ import (
 	"github.com/cmspeedau/gamedepot/internal/auth"
 	"github.com/cmspeedau/gamedepot/internal/config"
 	db "github.com/cmspeedau/gamedepot/internal/database/db"
+	"github.com/cmspeedau/gamedepot/internal/tasks"
 	"github.com/cmspeedau/gamedepot/web"
 )
 
@@ -25,12 +26,13 @@ type Server struct {
 	db        *db.Queries
 	sessions  *auth.SessionManager
 	limiter   *auth.RateLimiter
+	tasks     *tasks.Registry
 	templates *template.Template
 	static    fs.FS
 }
 
 func New(cfg config.Config, pool *pgxpool.Pool) *Server {
-	s := &Server{cfg: cfg, pool: pool, db: db.New(pool), sessions: auth.NewSessionManager(pool), limiter: auth.NewRateLimiter()}
+	s := &Server{cfg: cfg, pool: pool, db: db.New(pool), sessions: auth.NewSessionManager(pool), limiter: auth.NewRateLimiter(), tasks: tasks.New()}
 
 	tmpl, err := template.New("").Funcs(template.FuncMap{
 		"uuid": func(u pgtype.UUID) string {
@@ -39,6 +41,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) *Server {
 			}
 			return uuid.UUID(u.Bytes).String()
 		},
+		"pct": func(f float64) int { return int(f * 100) },
 	}).ParseFS(web.Assets, "templates/*.html")
 	if err != nil {
 		panic(err)
@@ -107,7 +110,13 @@ func (s *Server) Handler() http.Handler {
 	dash.GET("/clients", s.handleClientsPage)
 	dash.POST("/clients/approve", s.handleApproveClient)
 	dash.POST("/clients/:id/revoke", s.handleRevokeClient)
-	dash.GET("/objects", s.handleObjectsPage)
+	dash.GET("/libraries", s.handleLibrariesPage)
+	dash.POST("/libraries", s.handleCreateLibrary)
+	dash.POST("/libraries/:id/delete", s.handleDeleteLibrary)
+	dash.GET("/releases/new", s.handlePublishPage)
+	dash.POST("/releases", s.handlePublishSubmit)
+	dash.GET("/tasks/:id", s.handleTaskPage)
+	dash.POST("/releases/:digest/verify", s.handleVerifyRelease)
 	dash.POST("/objects", s.handleObjectUpload)
 
 	// Client API (JSON).
@@ -118,7 +127,9 @@ func (s *Server) Handler() http.Handler {
 	api.GET("/objects/:id", s.requireBearer(s.handleObjectServe))
 	api.GET("/library", s.requireBearer(s.handleLibrary))
 	api.GET("/games/:id", s.requireBearer(s.handleGame))
-	api.GET("/games/:id/versions", s.requireBearer(s.handleGameVersions))
+	api.GET("/releases/:versionId", s.requireBearer(s.handleRelease))
+	api.GET("/depot/manifests/:digest", s.requireBearer(s.handleDepotManifest))
+	api.GET("/depot/objects/:sha256", s.requireBearer(s.handleDepotObject))
 
 	return r
 }
