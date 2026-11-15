@@ -1,5 +1,8 @@
+pub mod api;
+pub mod auth;
 pub mod config;
 pub mod depot;
+pub mod download;
 pub mod install;
 pub mod store;
 

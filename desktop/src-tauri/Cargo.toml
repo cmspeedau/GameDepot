@@ -30,3 +30,7 @@ base64 = "0.22"
 thiserror = "2"
 rusqlite = { version = "0.43", features = ["bundled"] }
 dirs = "7.0"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time", "sync", "fs", "io-util"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "webpki-roots", "json"] }
+async-trait = "0.1"
+keyring = "4"

@@ -90,11 +90,17 @@ integrity check passes on a fresh publish.
 - [x] Depot verification core in Rust: manifest parse, AES-256-GCM decrypt, content-hash
       and file-hash verify, multi-chunk assembly. Proven against a Go-generated golden
       fixture, with tamper-rejection and incremental-download planning tests.
-- [ ] Pairing UI, token storage in the OS keyring, sign-out.
+- [~] Pairing UI, token storage in the OS keyring, sign-out. Pairing orchestration
+      (`auth::initiate` / `auth::complete`) and the keyring store compile; the flow is
+      tested against a mock client. The Vue pairing screen and a live keyring run are left.
 - [~] Library fetch with local install state in SQLite. The install store (`store.rs`)
-      tracks installed versions, per-object and per-file completion, and cross-version
-      reuse; the library network fetch arrives with the API client.
-- [ ] Resumable download: parallel chunks, verify, decrypt, write, retry with backoff.
+      and the API client (`api.rs`, `ApiClient` trait over reqwest) are built; the store
+      is fully tested, the reqwest transport compiles but is exercised only against a
+      live server.
+- [~] Resumable download: parallel chunks, verify, decrypt, write, retry with backoff.
+      `download::ensure_objects` (bounded concurrency, decrypt-verify before marking
+      done, exponential backoff, cache resume) and `assemble_from_cache` are tested with
+      fake sources; the real `HttpApiClient` object fetch is not run here.
 - [~] Incremental install: reuse local objects by manifest chunk match, verify by hash
       before reuse, download only the objects that differ between versions. This is how
       Steam's depot downloads stay cheap across updates. The planner
