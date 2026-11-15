@@ -35,3 +35,41 @@ impl FileDepot {
         std::fs::read(&p).map_err(|e| DepotError::Io(format!("{}: {e}", p.display())))
     }
 }
+
+/// Object hashes a client must download to assemble the given files, given the set of
+/// object hashes it already holds and has verified. This is the incremental-install
+/// primitive: updating version A to B fetches only chunks that are new or changed, the
+/// same idea Steam's depot reuse relies on. Returns sorted, deduplicated hashes.
+pub fn missing_objects<'a, I>(
+    files: I,
+    have: &std::collections::HashSet<String>,
+) -> Vec<String>
+where
+    I: IntoIterator<Item = &'a crate::depot::manifest::FileEntry>,
+{
+    let mut out = std::collections::BTreeSet::new();
+    for f in files {
+        for c in &f.chunks {
+            if !have.contains(&c.sha256) {
+                out.insert(c.sha256.clone());
+            }
+        }
+    }
+    out.into_iter().collect()
+}
+
+/// All distinct object hashes referenced by a set of files.
+pub fn referenced_objects<'a, I>(m: &Manifest, files: I) -> Vec<String>
+where
+    I: IntoIterator<Item = &'a crate::depot::manifest::FileEntry>,
+{
+    let mut out = std::collections::BTreeSet::new();
+    for f in files {
+        for c in &f.chunks {
+            if m.objects.contains_key(&c.sha256) {
+                out.insert(c.sha256.clone());
+            }
+        }
+    }
+    out.into_iter().collect()
+}

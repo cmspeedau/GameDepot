@@ -64,3 +64,30 @@ fn tampered_object_is_rejected() {
     let err = crypto::decrypt_object(&key, sha, meta, &ct);
     assert!(err.is_err(), "tampered ciphertext must not decrypt");
 }
+
+#[test]
+fn missing_objects_plans_incremental_download() {
+    let root = fixture_root();
+    let digest = expected_digest();
+    let depot = FileDepot::open(&root, &digest).expect("open release");
+
+    let referenced = app_lib::depot::referenced_objects(&depot.manifest, &depot.manifest.files);
+    assert_eq!(referenced.len(), 2, "two distinct objects across the two files");
+
+    // Nothing local: must fetch everything.
+    let have = std::collections::HashSet::new();
+    let missing = app_lib::depot::missing_objects(&depot.manifest.files, &have);
+    assert_eq!(missing, referenced);
+
+    // One object held: fetch only the other.
+    let mut have = std::collections::HashSet::new();
+    have.insert(referenced[0].clone());
+    let missing = app_lib::depot::missing_objects(&depot.manifest.files, &have);
+    assert_eq!(missing, vec![referenced[1].clone()]);
+
+    // All held: nothing to download (the update is a local reassembly).
+    let have = referenced.iter().cloned().collect();
+    let missing = app_lib::depot::missing_objects(&depot.manifest.files, &have);
+    assert!(missing.is_empty());
+}
+

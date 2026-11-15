@@ -87,6 +87,9 @@ integrity check passes on a fresh publish.
 
 ## Phase 5: desktop client
 
+- [x] Depot verification core in Rust: manifest parse, AES-256-GCM decrypt, content-hash
+      and file-hash verify, multi-chunk assembly. Proven against a Go-generated golden
+      fixture, with tamper-rejection and incremental-download planning tests.
 - [ ] Pairing UI, token storage in the OS keyring, sign-out.
 - [ ] Library fetch with local install state in SQLite.
 - [ ] Resumable download: parallel chunks, verify, decrypt, write, retry with backoff.
