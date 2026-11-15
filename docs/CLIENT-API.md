@@ -205,6 +205,88 @@ Collections owned by the user.
 
 Removes the collection and its entries.
 
+## Cloud saves
+
+Versioned save archives per (user, game, slot). The archive is an opaque blob (the
+desktop packs matched save files into a `tar.zstd`); the server stores it content-
+addressed and tracks versions with optimistic concurrency. Requires the `saves:read` or
+`saves:write` scope on the client token.
+
+The server does not open the archive. Integrity of the bytes is the archive SHA-256;
+the logical `contentHash` (a hash of the client's file set: key, size, per-file hash,
+mode) is supplied by the client and used only for sync decisions and dedup. This mirrors
+Ludusavi's client-side content identity.
+
+### `GET /api/v1/saves`
+
+Slots for the caller, optionally `?game=<id>`:
+
+```json
+[{ "id": "...", "gameId": "...", "slotIndex": 0, "label": "manual",
+   "headVersionId": "...", "createdAt": "...", "updatedAt": "..." }]
+```
+
+### `GET /api/v1/saves/manifests/{gameId}`
+
+The save-location roots the server holds for the game (the user-defined manifest).
+`platform` is `windows|linux|macos|*`, `kind` is `file|registry`.
+
+```json
+{ "gameId": "...", "paths": [
+  { "id": "...", "platform": "linux", "kind": "file",
+    "template": "{user}/.local/share/{p}/**", "recursive": true } ] }
+```
+
+### `POST /api/v1/saves/slot/{gameId}/{slot}/push`
+
+Streams the archive as the request body. Headers:
+
+- `X-Content-Hash` (required): the client's logical hash for this save set.
+- `X-Base-Seq` (optional, default 0): the version sequence the client built on.
+- `X-File-Count` (optional).
+
+Response is the created version. Outcomes:
+
+- `200` with the version — a new head was created.
+- `200` with `{"noop":true,"headVersionId":...}` — the content already equals the head.
+- `409` with `{"error":{"code":"conflict"},"headSeq":n,"headVersionId":...}` — the head
+  moved past the base and content differs; pull or rebase before pushing.
+
+### `GET /api/v1/saves/slot/{gameId}/{slot}/download[?seq=n]`
+
+The head archive (or a specific version). Serves the stored blob bytes with an `ETag`
+of its content hash. `404` when the slot or version does not exist.
+
+### `GET /api/v1/saves/slot/{gameId}/{slot}/versions`
+
+All versions of the slot, newest sequence first:
+
+```json
+[{ "id": "...", "seq": 2, "kind": "save", "contentHash": "h2",
+   "archiveSha256": "...", "size": 12, "fileCount": 0, "pinned": false, "createdAt": "..." }]
+```
+
+`kind` is `save` (a client push) or `restore` (an older version made current).
+
+### `POST /api/v1/saves/slot/{gameId}/{slot}/versions/{versionId}/restore`
+
+Adds a new `restore` version that reuses the target's archive and makes it the head.
+`409` if the head moved concurrently.
+
+### `POST /api/v1/saves/slot/{gameId}/{slot}/versions/{versionId}/pin`
+
+Pins or unpins (default pinned; `?pinned=false` to unpin). Pinned versions are never
+pruned and cannot be deleted.
+
+### `DELETE /api/v1/saves/slot/{gameId}/{slot}/versions/{versionId}`
+
+Deletes an unpinned, non-head version. Returns `409` when the version is the head or is
+pinned.
+
+Retention: each slot keeps the head plus the most recent `10` unpinned versions; older
+ones are pruned on push. Stored archive blobs are content-addressed and shared, so the
+server does not delete blob files on prune (dedup keeps storage bounded).
+
 ## Objects
 
 ### `GET /api/v1/objects/{id}`

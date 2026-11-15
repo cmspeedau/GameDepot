@@ -5,10 +5,54 @@
 package db
 
 import (
+	"database/sql/driver"
+	"fmt"
 	"net/netip"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type SaveVersionKind string
+
+const (
+	SaveVersionKindSave    SaveVersionKind = "save"
+	SaveVersionKindRestore SaveVersionKind = "restore"
+)
+
+func (e *SaveVersionKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SaveVersionKind(s)
+	case string:
+		*e = SaveVersionKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SaveVersionKind: %T", src)
+	}
+	return nil
+}
+
+type NullSaveVersionKind struct {
+	SaveVersionKind SaveVersionKind
+	Valid           bool // Valid is true if SaveVersionKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSaveVersionKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.SaveVersionKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SaveVersionKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSaveVersionKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SaveVersionKind), nil
+}
 
 type Client struct {
 	ID         pgtype.UUID
@@ -130,6 +174,42 @@ type Release struct {
 	TotalSize   int64
 	PublishedBy pgtype.UUID
 	PublishedAt pgtype.Timestamptz
+}
+
+type SavePath struct {
+	ID        pgtype.UUID
+	GameID    pgtype.UUID
+	Platform  string
+	Kind      string
+	Template  string
+	Recursive bool
+	CreatedBy pgtype.UUID
+	CreatedAt pgtype.Timestamptz
+}
+
+type SaveSlot struct {
+	ID            pgtype.UUID
+	UserID        pgtype.UUID
+	GameID        pgtype.UUID
+	SlotIndex     int32
+	Label         string
+	HeadVersionID pgtype.UUID
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+}
+
+type SaveVersion struct {
+	ID              pgtype.UUID
+	SlotID          pgtype.UUID
+	VersionSeq      int32
+	Kind            SaveVersionKind
+	ContentHash     string
+	ArchiveSha256   string
+	ArchiveObjectID pgtype.UUID
+	Size            int64
+	FileCount       int32
+	Pinned          bool
+	CreatedAt       pgtype.Timestamptz
 }
 
 type Session struct {

@@ -315,7 +315,7 @@ func (s *Server) handlePairingInitiate(c *gin.Context) {
 	}
 	code := strings.ToUpper(hex.EncodeToString(tb))
 	expires := time.Now().Add(10 * time.Minute)
-	scopes := []string{"library:read", "playtime:write", "collections:write"}
+	scopes := []string{"library:read", "playtime:write", "collections:write", "saves:read", "saves:write"}
 	_ = s.db.CreatePairingCode(c.Request.Context(), db.CreatePairingCodeParams{
 		CodeHash:  auth.TokenHash(code),
 		Name:      body.Name,

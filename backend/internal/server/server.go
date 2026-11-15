@@ -131,6 +131,16 @@ func (s *Server) Handler() http.Handler {
 	api.GET("/depot/manifests/:digest", s.requireBearer(s.handleDepotManifest))
 	api.GET("/depot/objects/:sha256", s.requireBearer(s.handleDepotObject))
 
+	// Cloud saves (require saves:read / saves:write scope on the client token).
+	api.GET("/saves", s.requireBearer(s.handleSavesList))
+	api.GET("/saves/manifests/:gameId", s.requireBearer(s.handleSaveManifest))
+	api.POST("/saves/slot/:gameId/:slot/push", s.requireBearer(s.handleSavePush))
+	api.GET("/saves/slot/:gameId/:slot/download", s.requireBearer(s.handleSaveDownload))
+	api.GET("/saves/slot/:gameId/:slot/versions", s.requireBearer(s.handleSaveVersions))
+	api.POST("/saves/slot/:gameId/:slot/versions/:versionId/restore", s.requireBearer(s.handleSaveRestore))
+	api.POST("/saves/slot/:gameId/:slot/versions/:versionId/pin", s.requireBearer(s.handleSavePin))
+	api.DELETE("/saves/slot/:gameId/:slot/versions/:versionId", s.requireBearer(s.handleSaveDeleteVersion))
+
 	return r
 }
 

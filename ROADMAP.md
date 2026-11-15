@@ -140,7 +140,11 @@ backup.
 
 ## Phase 7: breadth
 
-- [ ] Cloud saves: slots, versions, conflict detection, retention, pinning.
+- [~] Cloud saves: slots, versions, conflict detection, retention, pinning. Server-side
+      is complete and smoke-tested against a live server (push with optimistic
+      concurrency, idempotent no-op, stale-base conflict 409, per-version download,
+      restore, pin, delete guards, retention window, and the save-path manifest read).
+      The desktop Rust collector that expands roots, packs `tar.zstd`, and syncs is next.
 - [ ] Store ingestion: GOG first, then Epic, with an encrypted connection store.
 - [ ] Metadata providers with a manual fallback.
 - [ ] Cache node for LAN and offline use (see below).
