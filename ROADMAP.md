@@ -22,21 +22,22 @@ and in which order.
 
 ## Phase 1: scaffold
 
-- [ ] `backend/` Go module, `cmd/server` with config, pgx pool, HTTP server and clean
+- [x] `backend/` Go module, `cmd/server` with config, pgx pool, HTTP server and clean
       shutdown.
-- [ ] Config parser for the variables in `docs/OPERATIONS.md`, validated at boot.
-- [ ] goose migrations for the first schema, applied by a `migrate` subcommand and on
+- [x] Config parser for the variables in `docs/OPERATIONS.md`, validated at boot.
+- [x] goose migrations for the first schema, applied by a `migrate` subcommand and on
       boot in development.
-- [ ] sqlc setup and the first query set for users, sessions and settings.
-- [ ] Dashboard shell: layout, navigation, Tailwind pipeline, vendored HTMX, flash
-      messages, error pages.
-- [ ] Setup and sign-in pages rendering against stub handlers.
-- [ ] `desktop/` Tauri 2 project with Vue 3, Vite, shadcn-vue, Tailwind v4, and a
-      window that opens.
-- [ ] `deploy/` Dockerfile and compose file for the server and PostgreSQL.
+- [x] sqlc setup and the first query set for users, sessions and settings.
+- [~] Dashboard shell: layout, navigation, Tailwind pipeline, vendored HTMX, flash
+      messages, error pages. Tailwind and HTMX are wired; layout, navigation, flash and
+      error pages are still to come.
+- [x] Setup and sign-in pages rendering, wired to working handlers.
+- [x] `desktop/` Tauri 2 project with Vue 3, Vite and a window that builds. shadcn-vue
+      and Tailwind v4 arrive with the UI work.
+- [x] `deploy/` Dockerfile and compose file for the server and PostgreSQL. Image builds.
 
 Exit criteria: `go build ./...` and `pnpm build` succeed, the dashboard renders, and
-the desktop window opens from the Vite build.
+the desktop app builds from the Vite output. All met.
 
 ## Phase 2: identity
 

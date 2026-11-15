@@ -48,6 +48,27 @@ func main() {
 	}
 	defer pool.Close()
 
+	if len(os.Args) > 1 && os.Args[1] == "migrate" {
+		db := stdlib.OpenDB(*pool.Config().ConnConfig)
+		fsys, err := fs.Sub(gamedepot.Migrations, "migrations")
+		if err != nil {
+			slog.Error("migration fs", "err", err)
+			os.Exit(1)
+		}
+		goose.SetBaseFS(fsys)
+		if err := goose.SetDialect("postgres"); err != nil {
+			slog.Error("goose dialect", "err", err)
+			os.Exit(1)
+		}
+		if err := goose.Up(db, "."); err != nil {
+			slog.Error("migrate", "err", err)
+			os.Exit(1)
+		}
+		db.Close()
+		slog.Info("migrations applied")
+		return
+	}
+
 	if cfg.AutoMigrate {
 		db := stdlib.OpenDB(*pool.Config().ConnConfig)
 		fsys, err := fs.Sub(gamedepot.Migrations, "migrations")

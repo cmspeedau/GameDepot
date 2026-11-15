@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: gamedepot
+      POSTGRES_PASSWORD: gamedepot
+      POSTGRES_DB: gamedepot
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gamedepot -d gamedepot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  gamedepot:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      DATABASE_URL: postgresql://gamedepot:gamedepot@db:5432/gamedepot?sslmode=disable
+      EXTERNAL_URL: http://localhost:4000
+      DATA: /data
+      LIBRARY: /library
+      LOG_LEVEL: info
+      GAMEDEPOT_AUTO_MIGRATE: "true"
+    volumes:
+      - data:/data
+      - library:/library
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata: {}
+  data: {}
+  library: {}
