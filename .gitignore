@@ -1,0 +1,51 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!docs/fixtures/**/*.pem
+
+# Runtime volumes
+/data/
+/library/
+/games/
+/.data/
+/dev-data/
+
+# Go
+/backend/bin/
+/backend/server
+*.test
+*.out
+coverage.out
+coverage.html
+
+# Node and desktop UI build output
+node_modules/
+.pnpm-store/
+dist/
+.output/
+.nuxt/
+.vinxi/
+.vite/
+*.tsbuildinfo
+pnpm-debug.log*
+npm-debug.log*
+
+# Rust
+target/
+
+# Generated depot and object fixtures from local runs
+/tmp/
+*.tmp
+
+# Editors and tools
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.openchamber/
+*.swp

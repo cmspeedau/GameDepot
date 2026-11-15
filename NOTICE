@@ -1,0 +1,54 @@
+GameDepot
+Copyright (C) 2026 the GameDepot contributors
+
+This program is free software: you can redistribute it and/or modify it under the
+terms of the GNU Affero General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License along with
+this program. If not, see <https://www.gnu.org/licenses/>.
+
+## Upstream attribution
+
+GameDepot is a derivative work of Drop OSS (https://github.com/Drop-OSS/drop),
+which is licensed under the GNU Affero General Public License, version 3.
+
+The following are carried over from Drop OSS and remain under AGPL-3.0-only:
+
+- The database schema, including its models, enums and indexes.
+- The desktop client Rust core under `desktop/src-tauri/`.
+- The `libraries/droplet` crate and its manifest and certificate formats.
+- The droplet v2 and `gamedepot-droplet` depot formats.
+- The client HTTP contract and WebSocket protocol.
+- Portions of documentation and naming reused or adapted.
+
+Copyright in the upstream work remains with its authors. This fork does not claim
+ownership of it. Where the fork modifies an upstream file, the modification is
+released under the same license.
+
+## Third-party components
+
+Bundled or linked dependencies keep their own licenses. Notably:
+
+- Vue, Vite, vue-router and shadcn-vue components: MIT.
+- Reka UI: MIT.
+- Tailwind CSS: MIT.
+- HTMX: BSD 2-Clause.
+- Tauri: Apache-2.0 or MIT.
+- The Go standard library and Gin: BSD 3-Clause and MIT respectively.
+- The Rust crates used by the desktop client: as declared in their `Cargo.toml`
+  files.
+
+Run `go mod licenses` or `cargo about` (once configured) for the full dependency list
+of a given build.
+
+## Source
+
+The complete corresponding source for any published build of GameDepot is this
+repository at the tag or commit named in the build metadata. If you run a modified
+version as a network service, the AGPL requires you to offer its source to the people
+using it.

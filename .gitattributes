@@ -1,0 +1,34 @@
+* text=auto eol=lf
+
+*.go text diff=golang
+*.mod text
+*.sum text
+*.sql text diff=sql
+*.md text diff=markdown
+*.yml text
+*.yaml text
+*.json text
+*.html text
+*.tmpl text
+*.css text
+*.js text
+*.ts text
+*.vue text
+*.rs text diff=rust
+*.toml text
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.zip binary
+*.gz binary
+*.zst binary
+
+# Format fixtures and manifests are compared byte for byte.
+docs/fixtures/** -text
+backend/internal/depot/testdata/** -text
