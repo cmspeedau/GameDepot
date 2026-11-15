@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} - GameDepot</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body class="min-h-screen bg-zinc-950 text-zinc-100">
+  {{template "nav" .}}
+  <main class="mx-auto max-w-xl px-6 py-8">
+    <h1 class="text-xl font-semibold mb-4">{{.Title}}</h1>
+    {{template "flash" .}}
+    <form method="post" action="/dashboard/games" class="space-y-4">
+      <input type="hidden" name="_csrf" value="{{.CSRF}}">
+      <label class="block">
+        <span class="text-sm">Name</span>
+        <input name="name" class="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2" required>
+      </label>
+      <label class="block">
+        <span class="text-sm">Slug</span>
+        <input name="slug" class="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2">
+      </label>
+      <label class="block">
+        <span class="text-sm">Summary</span>
+        <input name="summary" class="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2">
+      </label>
+      <label class="block">
+        <span class="text-sm">Description</span>
+        <textarea name="description" rows="4" class="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2"></textarea>
+      </label>
+      <label class="block">
+        <span class="text-sm">Cover object id</span>
+        <input name="cover_object_id" class="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2">
+      </label>
+      <button class="rounded bg-blue-600 px-4 py-2 font-medium">Create</button>
+    </form>
+  </main>
+</body>
+</html>

@@ -22,6 +22,24 @@ type Client struct {
 	RevokedAt  pgtype.Timestamptz
 }
 
+type Collection struct {
+	ID        pgtype.UUID
+	UserID    pgtype.UUID
+	Name      string
+	CreatedAt pgtype.Timestamptz
+}
+
+type CollectionEntry struct {
+	CollectionID pgtype.UUID
+	GameID       pgtype.UUID
+	Position     int32
+}
+
+type Company struct {
+	ID   pgtype.UUID
+	Name string
+}
+
 type Game struct {
 	ID            pgtype.UUID
 	Slug          string
@@ -34,6 +52,26 @@ type Game struct {
 	UpdatedAt     pgtype.Timestamptz
 }
 
+type GameCompany struct {
+	GameID    pgtype.UUID
+	CompanyID pgtype.UUID
+	Role      string
+}
+
+type GameTag struct {
+	GameID pgtype.UUID
+	TagID  pgtype.UUID
+}
+
+type GameVersion struct {
+	ID        pgtype.UUID
+	GameID    pgtype.UUID
+	Name      string
+	Platform  string
+	TotalSize int64
+	CreatedAt pgtype.Timestamptz
+}
+
 type Invitation struct {
 	ID        pgtype.UUID
 	CodeHash  []byte
@@ -42,6 +80,16 @@ type Invitation struct {
 	ExpiresAt pgtype.Timestamptz
 	CreatedAt pgtype.Timestamptz
 	UsedAt    pgtype.Timestamptz
+}
+
+type Launch struct {
+	ID         pgtype.UUID
+	VersionID  pgtype.UUID
+	Platform   string
+	Name       string
+	Executable string
+	Arguments  []string
+	WorkingDir string
 }
 
 type Object struct {
@@ -82,6 +130,12 @@ type Setting struct {
 	Key       string
 	Value     []byte
 	UpdatedAt pgtype.Timestamptz
+}
+
+type Tag struct {
+	ID   pgtype.UUID
+	Slug string
+	Name string
 }
 
 type Task struct {

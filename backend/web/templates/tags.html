@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} - GameDepot</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body class="min-h-screen bg-zinc-950 text-zinc-100">
+  {{template "nav" .}}
+  <main class="mx-auto max-w-3xl px-6 py-8">
+    <h1 class="text-xl font-semibold mb-4">Tags</h1>
+    {{template "flash" .}}
+    <form method="post" action="/dashboard/tags" class="flex gap-2 mb-6">
+      <input type="hidden" name="_csrf" value="{{.CSRF}}">
+      <input name="name" placeholder="tag name" class="rounded border border-zinc-700 bg-zinc-900 px-3 py-2">
+      <button class="rounded bg-blue-600 px-4 py-2 text-sm font-medium">Add</button>
+    </form>
+    <ul class="text-sm text-zinc-300">
+      {{range .Tags}}<li class="py-1">{{.Name}} <span class="text-zinc-500">({{.Slug}})</span></li>{{end}}
+    </ul>
+  </main>
+</body>
+</html>

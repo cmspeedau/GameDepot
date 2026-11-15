@@ -55,13 +55,15 @@ through the dashboard and holds a working token.
 
 ## Phase 3: catalog and objects
 
-- [ ] Object store with content type, ETag, cache headers and streaming reads.
-- [ ] Cover, icon and avatar upload.
-- [ ] Games: create, edit, delete, description, release date, platform.
-- [ ] Companies, tags and the game relations.
-- [ ] Versions and launch configurations.
-- [ ] Collections.
-- [ ] Admin lists with pagination, search and HTMX fragments.
+- [x] Object store with content type, ETag, cache headers and streaming reads.
+- [x] Cover, icon and avatar upload.
+- [x] Games: create, edit, delete, description, release date, platform.
+- [x] Companies, tags and the game relations.
+- [~] Versions and launch configurations. Versions work; launches arrive with the
+      desktop phase.
+- [x] Collections.
+- [~] Admin lists with pagination, search and HTMX fragments. Basic lists work;
+      pagination and search are later.
 
 Exit criteria: an admin can create a game with a cover, a version and a launch
 configuration, and the desktop can list it through the API.

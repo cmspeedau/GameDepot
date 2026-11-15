@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} - GameDepot</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body class="min-h-screen bg-zinc-950 text-zinc-100">
+  {{template "nav" .}}
+  <main class="mx-auto max-w-3xl px-6 py-8">
+    <div class="flex items-center justify-between mb-4">
+      <h1 class="text-xl font-semibold">Games</h1>
+      <a href="/dashboard/games/new" class="rounded bg-blue-600 px-4 py-2 text-sm font-medium">New game</a>
+    </div>
+    {{template "flash" .}}
+    <table class="w-full text-sm">
+      <thead><tr class="text-left text-zinc-400"><th class="py-2">Name</th><th>Slug</th><th>Versions</th><th></th></tr></thead>
+      <tbody>
+      {{range .Games}}
+        <tr class="border-t border-zinc-800">
+          <td class="py-2"><a href="/dashboard/games/{{uuid .ID}}" class="text-blue-400 hover:underline">{{.Name}}</a></td>
+          <td>{{.Slug}}</td>
+          <td></td>
+          <td>
+            <form method="post" action="/dashboard/games/{{uuid .ID}}/delete" class="inline">
+              <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+              <button class="text-red-400 hover:underline text-xs">delete</button>
+            </form>
+          </td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>

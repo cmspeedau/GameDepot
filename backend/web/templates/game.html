@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Game.Name}} - GameDepot</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body class="min-h-screen bg-zinc-950 text-zinc-100">
+  {{template "nav" .}}
+  <main class="mx-auto max-w-3xl px-6 py-8">
+    <h1 class="text-xl font-semibold mb-4">{{.Game.Name}}</h1>
+    {{template "flash" .}}
+    <form method="post" action="/dashboard/games/{{uuid .Game.ID}}" class="space-y-3 mb-8">
+      <input type="hidden" name="_csrf" value="{{.CSRF}}">
+      <label class="block">
+        <span class="text-sm">Name</span>
+        <input name="name" value="{{.Game.Name}}" class="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2">
+      </label>
+      <label class="block">
+        <span class="text-sm">Slug</span>
+        <input name="slug" value="{{.Game.Slug}}" class="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2">
+      </label>
+      <label class="block">
+        <span class="text-sm">Summary</span>
+        <input name="summary" value="{{.Game.Summary}}" class="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2">
+      </label>
+      <label class="block">
+        <span class="text-sm">Description</span>
+        <textarea name="description" rows="4" class="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2">{{.Game.Description}}</textarea>
+      </label>
+      <label class="block">
+        <span class="text-sm">Cover object id</span>
+        <input name="cover_object_id" value="{{if .Game.CoverObjectID.Valid}}{{uuid .Game.CoverObjectID}}{{end}}" class="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2">
+      </label>
+      <button class="rounded bg-blue-600 px-4 py-2 font-medium">Save</button>
+    </form>
+    <h2 class="text-lg mb-2">Versions</h2>
+    <ul class="text-sm text-zinc-400 mb-4">
+      {{range .Versions}}<li>{{.Name}} ({{.Platform}})</li>{{end}}
+    </ul>
+    <form method="post" action="/dashboard/games/{{uuid .Game.ID}}/versions" class="flex gap-2">
+      <input type="hidden" name="_csrf" value="{{.CSRF}}">
+      <input name="name" placeholder="version name" class="rounded border border-zinc-700 bg-zinc-900 px-3 py-2">
+      <input name="platform" placeholder="platform" class="rounded border border-zinc-700 bg-zinc-900 px-3 py-2">
+      <button class="rounded bg-blue-600 px-4 py-2 text-sm font-medium">Add version</button>
+    </form>
+    <form method="post" action="/dashboard/games/{{uuid .Game.ID}}/delete" class="mt-8">
+      <input type="hidden" name="_csrf" value="{{.CSRF}}">
+      <button class="text-red-400 hover:underline text-sm">Delete game</button>
+    </form>
+  </main>
+</body>
+</html>
