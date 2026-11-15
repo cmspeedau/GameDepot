@@ -91,15 +91,20 @@ integrity check passes on a fresh publish.
       and file-hash verify, multi-chunk assembly. Proven against a Go-generated golden
       fixture, with tamper-rejection and incremental-download planning tests.
 - [ ] Pairing UI, token storage in the OS keyring, sign-out.
-- [ ] Library fetch with local install state in SQLite.
+- [~] Library fetch with local install state in SQLite. The install store (`store.rs`)
+      tracks installed versions, per-object and per-file completion, and cross-version
+      reuse; the library network fetch arrives with the API client.
 - [ ] Resumable download: parallel chunks, verify, decrypt, write, retry with backoff.
-- [ ] Incremental install: reuse local objects by manifest chunk match, verify by hash
+- [~] Incremental install: reuse local objects by manifest chunk match, verify by hash
       before reuse, download only the objects that differ between versions. This is how
-      Steam's depot downloads stay cheap across updates.
-- [ ] Install layout, file modes, conflict handling.
+      Steam's depot downloads stay cheap across updates. The planner
+      (`missing_objects`), the reuse inheritance (`Store::inherit_object_state`) and the
+      install path are tested together end to end; only the network fetch is left.
+- [~] Install layout, file modes, conflict handling. Files write atomically with the
+      manifest mode and reject traversal paths; same-version conflict handling is later.
 - [ ] Launch: process spawn, environment, working directory, exit status.
 - [ ] Playtime reporting.
-- [ ] Settings: server URL, download directory, concurrency, theme.
+- [x] Settings: server URL, download directory, concurrency, theme.
 
 Exit criteria: pair, download, install and launch a real game, with playtime recorded,
 then relaunch after a client restart.

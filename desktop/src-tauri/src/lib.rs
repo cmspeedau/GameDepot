@@ -1,4 +1,7 @@
+pub mod config;
 pub mod depot;
+pub mod install;
+pub mod store;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
