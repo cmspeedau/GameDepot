@@ -70,14 +70,17 @@ configuration, and the desktop can list it through the API.
 
 ## Phase 4: releases and depot
 
-- [ ] Library sources, directory scan and version detection.
-- [ ] Release build: 4 MiB chunks, SHA-256 over plaintext, AES-256-GCM per object,
+- [~] Library sources, directory scan and version detection. Library CRUD works;
+      automatic scan and version detection arrive with the desktop phase.
+- [x] Release build: 4 MiB chunks, SHA-256 over plaintext, AES-256-GCM per object,
       canonical manifest, manifest digest.
-- [ ] Atomic publish: temp write, fsync, rename, manifest last.
-- [ ] Depot routes for manifest and object reads, with range support.
-- [ ] Integrity check that rehashes every object in a release.
-- [ ] Task registry with progress, logs and cancellation.
-- [ ] Dashboard publish flow and task view.
+- [x] Atomic publish: temp write, fsync, rename, manifest last.
+- [~] Depot routes for manifest and object reads, with range support. Reads work;
+      range support is deferred (objects are the resume unit at 4 MiB).
+- [x] Integrity check that rehashes every object in a release.
+- [x] Task registry with progress, logs and cancellation. Progress and logs work;
+      cancellation is a later addition.
+- [x] Dashboard publish flow and task view.
 
 Exit criteria: a directory becomes a release, an object serves a valid range, and the
 integrity check passes on a fresh publish.
@@ -87,6 +90,9 @@ integrity check passes on a fresh publish.
 - [ ] Pairing UI, token storage in the OS keyring, sign-out.
 - [ ] Library fetch with local install state in SQLite.
 - [ ] Resumable download: parallel chunks, verify, decrypt, write, retry with backoff.
+- [ ] Incremental install: reuse local objects by manifest chunk match, verify by hash
+      before reuse, download only the objects that differ between versions. This is how
+      Steam's depot downloads stay cheap across updates.
 - [ ] Install layout, file modes, conflict handling.
 - [ ] Launch: process spawn, environment, working directory, exit status.
 - [ ] Playtime reporting.
@@ -163,3 +169,9 @@ chunks, but it couples the cache to the release manifest. Whole file is simpler 
 independent, at the cost of storing and moving more bytes than a client may need.
 Current lean: per chunk, since objects are already the unit of transfer. Decide before
 the manifest format is frozen in phase 4.
+
+**Precedent:** this is exactly how Steam's community Lancache works, a read-through
+per-chunk cache keyed by the content hash. Steam's own tooling (DepotDownloader) reaches
+it with a single config switch, the same shape as the client cache URL override above.
+The per-chunk lean is confirmed by that model: a cached object keyed by its hash is
+never stale and needs no invalidation, so eviction is just dropping a file.
