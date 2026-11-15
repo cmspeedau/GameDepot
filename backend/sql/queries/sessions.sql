@@ -17,5 +17,8 @@ DELETE FROM sessions WHERE id = $1;
 -- name: DeleteSessionsForUser :exec
 DELETE FROM sessions WHERE user_id = $1;
 
--- name: DeleteExpiredSessions :execrows
-DELETE FROM sessions WHERE expires_at <= now();
+-- name: ListSessionsForUser :many
+SELECT id, user_id, token_hash, csrf_secret, remember, created_at, expires_at, last_seen_at
+FROM sessions
+WHERE user_id = $1
+ORDER BY created_at DESC;

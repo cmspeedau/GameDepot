@@ -41,14 +41,14 @@ the desktop app builds from the Vite output. All met.
 
 ## Phase 2: identity
 
-- [ ] Argon2id passwords, sign-in, sign-out, session cookie, CSRF.
+- [x] Argon2id passwords, sign-in, sign-out, session cookie, CSRF.
 - [x] First-run setup token printed in the log and consumed by `/setup`.
-- [ ] Invitations, signup gating, user list, disable and password reset.
-- [ ] Session list and revocation.
-- [ ] Device pairing: code issue, dashboard approval, one-time claim, hashed client
+- [x] Invitations, signup gating, user list, disable and password reset.
+- [x] Session list and revocation.
+- [x] Device pairing: code issue, dashboard approval, one-time claim, hashed client
       token.
-- [ ] Client list and revocation in the dashboard.
-- [ ] Rate limits on sign-in, setup and pairing.
+- [x] Client list and revocation in the dashboard.
+- [x] Rate limits on sign-in, setup and pairing.
 
 Exit criteria: a fresh database reaches a signed-in admin, and a desktop device pairs
 through the dashboard and holds a working token.

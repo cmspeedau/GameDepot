@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/base64"
 	"html/template"
 	"io/fs"
 	"net/http"
@@ -23,14 +24,22 @@ type Server struct {
 	pool      *pgxpool.Pool
 	db        *db.Queries
 	sessions  *auth.SessionManager
+	limiter   *auth.RateLimiter
 	templates *template.Template
 	static    fs.FS
 }
 
 func New(cfg config.Config, pool *pgxpool.Pool) *Server {
-	s := &Server{cfg: cfg, pool: pool, db: db.New(pool), sessions: auth.NewSessionManager(pool)}
+	s := &Server{cfg: cfg, pool: pool, db: db.New(pool), sessions: auth.NewSessionManager(pool), limiter: auth.NewRateLimiter()}
 
-	tmpl, err := template.ParseFS(web.Assets, "templates/*.html")
+	tmpl, err := template.New("").Funcs(template.FuncMap{
+		"uuid": func(u pgtype.UUID) string {
+			if !u.Valid {
+				return ""
+			}
+			return uuid.UUID(u.Bytes).String()
+		},
+	}).ParseFS(web.Assets, "templates/*.html")
 	if err != nil {
 		panic(err)
 	}
@@ -67,11 +76,30 @@ func (s *Server) Handler() http.Handler {
 	r.POST("/signin", s.handleSigninSubmit)
 	r.POST("/signout", s.handleSignout)
 
-	// Dashboard (placeholder, requires session in later phases).
-	r.GET("/dashboard", s.requireSession(s.handleDashboard))
+	// Signup via invitation.
+	r.GET("/signup", s.handleSignupPage)
+	r.POST("/signup", s.handleSignupSubmit)
 
-	// Dashboard fragments placeholder.
-	r.GET("/dashboard/_/ping", s.requireSession(func(c *gin.Context) { c.String(200, "pong") }))
+	// Dashboard (session required).
+	dash := r.Group("/dashboard")
+	dash.Use(s.requireSessionMiddleware(), s.csrfProtect())
+	dash.GET("", s.handleDashboard)
+	dash.GET("/users", s.handleUsersPage)
+	dash.POST("/users/:id/disable", s.handleUserDisable)
+	dash.POST("/users/:id/password", s.handleUserPassword)
+	dash.GET("/invitations", s.handleInvitationsPage)
+	dash.POST("/invitations", s.handleCreateInvitation)
+	dash.GET("/sessions", s.handleSessionsPage)
+	dash.POST("/sessions/:id/revoke", s.handleRevokeSession)
+	dash.GET("/clients", s.handleClientsPage)
+	dash.POST("/clients/approve", s.handleApproveClient)
+	dash.POST("/clients/:id/revoke", s.handleRevokeClient)
+
+	// Client API (JSON).
+	api := r.Group("/api/v1")
+	api.POST("/pairing/initiate", s.handlePairingInitiate)
+	api.POST("/pairing/claim", s.handlePairingClaim)
+	api.GET("/me", s.requireBearer(s.handleMe))
 
 	return r
 }
@@ -90,6 +118,11 @@ func (s *Server) render(c *gin.Context, name string, data gin.H) {
 	}
 	if _, ok := data["Flash"]; !ok {
 		data["Flash"] = c.Query("flash")
+	}
+	if sess, ok := c.Get("session"); ok {
+		if ss, ok := sess.(*auth.Session); ok {
+			data["CSRF"] = base64.RawURLEncoding.EncodeToString(ss.CSRF)
+		}
 	}
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	if err := s.templates.ExecuteTemplate(c.Writer, name, data); err != nil {
@@ -149,6 +182,10 @@ func (s *Server) handleSetupPage(c *gin.Context) {
 }
 
 func (s *Server) handleSetupSubmit(c *gin.Context) {
+	if !s.limiter.Allow(c.ClientIP(), 5, 15*time.Minute) {
+		s.render(c, "setup.html", gin.H{"Title": "Setup", "Error": "Too many attempts. Try again later."})
+		return
+	}
 	count, err := s.db.CountUsers(c.Request.Context())
 	if err != nil {
 		c.String(500, "database error")
@@ -220,6 +257,10 @@ func (s *Server) handleSigninPage(c *gin.Context) {
 }
 
 func (s *Server) handleSigninSubmit(c *gin.Context) {
+	if !s.limiter.Allow(c.ClientIP(), 10, 15*time.Minute) {
+		s.render(c, "signin.html", gin.H{"Title": "Sign in", "Error": "Too many attempts. Try again later."})
+		return
+	}
 	username := strings.TrimSpace(c.PostForm("username"))
 	password := c.PostForm("password")
 	remember := c.PostForm("remember") == "on"

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} - GameDepot</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body class="min-h-screen bg-zinc-950 text-zinc-100">
+  {{template "nav" .}}
+  <main class="mx-auto max-w-3xl px-6 py-8">
+    <h1 class="text-xl font-semibold mb-4">Users</h1>
+    {{template "flash" .}}
+    <table class="w-full text-sm">
+      <thead><tr class="text-left text-zinc-400"><th class="py-2">Username</th><th>Admin</th><th>Disabled</th><th>Actions</th></tr></thead>
+      <tbody>
+      {{range .Users}}
+        <tr class="border-t border-zinc-800">
+          <td class="py-2">{{.Username}}</td>
+          <td>{{if .Admin}}yes{{else}}no{{end}}</td>
+          <td>{{if .Disabled}}yes{{else}}no{{end}}</td>
+          <td class="space-x-2">
+            <form method="post" action="/dashboard/users/{{uuid .ID}}/disable" class="inline">
+              <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+              <input type="hidden" name="disabled" value="{{if .Disabled}}false{{else}}true{{end}}">
+              <button class="text-blue-400 hover:underline">{{if .Disabled}}enable{{else}}disable{{end}}</button>
+            </form>
+            <form method="post" action="/dashboard/users/{{uuid .ID}}/password" class="inline">
+              <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+              <input name="password" placeholder="new password" class="rounded border border-zinc-700 bg-zinc-900 px-2 py-1">
+              <button class="text-blue-400 hover:underline">reset</button>
+            </form>
+          </td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>

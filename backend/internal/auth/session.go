@@ -143,7 +143,7 @@ func CSRFMatch(session *Session, submitted string) bool {
 	if session == nil {
 		return false
 	}
-	decoded, err := base64.RawStdEncoding.DecodeString(submitted)
+	decoded, err := base64.RawURLEncoding.DecodeString(submitted)
 	if err != nil {
 		return false
 	}
