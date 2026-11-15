@@ -20,6 +20,8 @@ pub enum DownloadError {
     Store(#[from] StoreError),
     #[error("install: {0}")]
     Install(#[from] InstallError),
+    #[error("decode: {0}")]
+    Decode(String),
     #[error("object {sha} failed after {attempts} attempts: {reason}")]
     Exhausted {
         sha: String,
