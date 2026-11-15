@@ -108,7 +108,10 @@ integrity check passes on a fresh publish.
       install path are tested together end to end; only the network fetch is left.
 - [~] Install layout, file modes, conflict handling. Files write atomically with the
       manifest mode and reject traversal paths; same-version conflict handling is later.
-- [ ] Launch: process spawn, environment, working directory, exit status.
+- [~] Launch: process spawn, environment, working directory, exit status. `launch.rs`
+      spawns via execve with an args array (no shell), applies env and cwd, captures exit
+      status and output, and detaches for real games. Tested against real processes; wiring
+      to a downloaded install and running-game tracking is next.
 - [ ] Playtime reporting.
 - [x] Settings: server URL, download directory, concurrency, theme.
 

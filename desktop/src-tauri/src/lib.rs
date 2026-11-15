@@ -4,6 +4,7 @@ pub mod config;
 pub mod depot;
 pub mod download;
 pub mod install;
+pub mod launch;
 pub mod store;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
