@@ -25,10 +25,10 @@ const MaxFiles = 200000
 const MaxTotalBytes = 4 * 1024 * 1024 * 1024 * 1024
 
 type ManifestFile struct {
-	Path   string         `json:"path"`
-	Size   int64          `json:"size"`
-	SHA256 string         `json:"sha256"`
-	Mode   int            `json:"mode"`
+	Path   string          `json:"path"`
+	Size   int64           `json:"size"`
+	SHA256 string          `json:"sha256"`
+	Mode   int             `json:"mode"`
 	Chunks []ManifestChunk `json:"chunks"`
 }
 
@@ -46,13 +46,13 @@ type ManifestObject struct {
 
 type Manifest struct {
 	Format    string                    `json:"format"`
-	Version   int                      `json:"version"`
-	ChunkSize int                      `json:"chunkSize"`
-	TotalSize int64                    `json:"totalSize"`
-	Key       string                   `json:"key"`
-	Files     []ManifestFile           `json:"files"`
+	Version   int                       `json:"version"`
+	ChunkSize int                       `json:"chunkSize"`
+	TotalSize int64                     `json:"totalSize"`
+	Key       string                    `json:"key"`
+	Files     []ManifestFile            `json:"files"`
 	Objects   map[string]ManifestObject `json:"objects"`
-	Digest    string                   `json:"digest"`
+	Digest    string                    `json:"digest"`
 }
 
 type BuildProgress struct {
@@ -242,8 +242,8 @@ func BuildRelease(sourceDir, depotRoot string, onProgress func(int64, int64)) (s
 
 				chunks = append(chunks, ManifestChunk{
 					SHA256: chunkHex,
-					Offset:  offset,
-					Size:    int64(n),
+					Offset: offset,
+					Size:   int64(n),
 				})
 				offset += int64(n)
 				doneBytes += int64(n)

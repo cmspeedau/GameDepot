@@ -15,8 +15,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/cmspeedau/gamedepot/internal/auth"
-	"github.com/cmspeedau/gamedepot/internal/depot"
 	db "github.com/cmspeedau/gamedepot/internal/database/db"
+	"github.com/cmspeedau/gamedepot/internal/depot"
 	"github.com/cmspeedau/gamedepot/internal/tasks"
 )
 
@@ -106,12 +106,12 @@ func (s *Server) handlePublishSubmit(c *gin.Context) {
 		}
 
 		_, err = s.db.CreateRelease(ctx, db.CreateReleaseParams{
-			ID:         pgtype.UUID{Bytes: uuid.New(), Valid: true},
-			GameID:     pgtype.UUID{Bytes: gameID, Valid: true},
-			VersionID:  pgtype.UUID{Bytes: versionID, Valid: true},
-			Digest:     digest,
-			Manifest:   manifestBytes,
-			TotalSize:  m.TotalSize,
+			ID:          pgtype.UUID{Bytes: uuid.New(), Valid: true},
+			GameID:      pgtype.UUID{Bytes: gameID, Valid: true},
+			VersionID:   pgtype.UUID{Bytes: versionID, Valid: true},
+			Digest:      digest,
+			Manifest:    manifestBytes,
+			TotalSize:   m.TotalSize,
 			PublishedBy: pgtype.UUID{Bytes: sess.UserID, Valid: true},
 		})
 		if err != nil {
@@ -170,7 +170,7 @@ func (s *Server) handleRelease(c *gin.Context) {
 		c.JSON(400, gin.H{"error": gin.H{"code": "bad_request", "message": "bad id"}})
 		return
 	}
-	// find game_id from version? need game id. Look up version first via db? No GetGameVersionByID? We have GetGameVersion (by id). 
+	// find game_id from version? need game id. Look up version first via db? No GetGameVersionByID? We have GetGameVersion (by id).
 	gv, err := s.db.GetGameVersion(c.Request.Context(), pgtype.UUID{Bytes: versionID, Valid: true})
 	if err != nil {
 		c.JSON(404, gin.H{"error": gin.H{"code": "not_found", "message": "version not found"}})

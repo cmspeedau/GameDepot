@@ -8,13 +8,13 @@ import (
 )
 
 type Config struct {
-	DatabaseURL    string
-	Port           string
-	ExternalURL    string
-	LibraryDir     string
-	DataDir        string
-	LogLevel       string
-	AutoMigrate    bool
+	DatabaseURL string
+	Port        string
+	ExternalURL string
+	LibraryDir  string
+	DataDir     string
+	LogLevel    string
+	AutoMigrate bool
 }
 
 func Load() (Config, error) {

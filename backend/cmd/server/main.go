@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,8 +18,8 @@ import (
 	"github.com/cmspeedau/gamedepot/internal/auth"
 	"github.com/cmspeedau/gamedepot/internal/config"
 	"github.com/cmspeedau/gamedepot/internal/database"
-	gamedepot "github.com/cmspeedau/gamedepot/sql"
 	"github.com/cmspeedau/gamedepot/internal/server"
+	gamedepot "github.com/cmspeedau/gamedepot/sql"
 )
 
 func main() {

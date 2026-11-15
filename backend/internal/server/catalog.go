@@ -393,11 +393,11 @@ func (s *Server) handleLibrary(c *gin.Context) {
 		return
 	}
 	type item struct {
-		ID                string  `json:"id"`
-		Name              string  `json:"name"`
-		Summary           string  `json:"summary"`
-		CoverURL          *string `json:"coverUrl"`
-		InstalledVersion  *string `json:"installedVersionId"`
+		ID               string  `json:"id"`
+		Name             string  `json:"name"`
+		Summary          string  `json:"summary"`
+		CoverURL         *string `json:"coverUrl"`
+		InstalledVersion *string `json:"installedVersionId"`
 	}
 	out := make([]item, 0, len(games))
 	for _, g := range games {

@@ -187,7 +187,7 @@ func (s *Server) handleUserPassword(c *gin.Context) {
 	}
 	_ = s.db.UpdateUserPassword(c.Request.Context(), db.UpdateUserPasswordParams{
 		ID:           pgtype.UUID{Bytes: id, Valid: true},
-		PasswordHash:  hash,
+		PasswordHash: hash,
 	})
 	c.Redirect(http.StatusFound, "/dashboard/users?flash=password+reset")
 }
