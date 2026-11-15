@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 
+	"github.com/cmspeedau/gamedepot/internal/auth"
 	"github.com/cmspeedau/gamedepot/internal/config"
 	"github.com/cmspeedau/gamedepot/internal/database"
 	gamedepot "github.com/cmspeedau/gamedepot/sql"
@@ -87,6 +88,12 @@ func main() {
 		}
 		db.Close()
 		slog.Info("migrations applied")
+	}
+
+	if token, err := auth.EnsureSetupToken(ctx, pool, cfg.ExternalURL); err != nil {
+		slog.Error("setup token", "err", err)
+	} else if token != "" {
+		slog.Info("setup required", "url", cfg.ExternalURL+"/setup?token="+token)
 	}
 
 	srv := server.New(cfg, pool)

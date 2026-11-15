@@ -141,7 +141,11 @@ func (s *Server) handleSetupPage(c *gin.Context) {
 		c.Redirect(302, "/signin")
 		return
 	}
-	s.render(c, "setup.html", gin.H{"Title": "Setup"})
+	if st, err := s.db.GetSetting(c.Request.Context(), "setup_complete"); err == nil && len(st.Value) > 0 {
+		c.Redirect(302, "/signin")
+		return
+	}
+	s.render(c, "setup.html", gin.H{"Title": "Setup", "Token": c.Query("token")})
 }
 
 func (s *Server) handleSetupSubmit(c *gin.Context) {
@@ -157,8 +161,15 @@ func (s *Server) handleSetupSubmit(c *gin.Context) {
 
 	username := strings.TrimSpace(c.PostForm("username"))
 	password := c.PostForm("password")
+	token := strings.TrimSpace(c.PostForm("token"))
 	if username == "" || len(password) < 8 {
-		s.render(c, "setup.html", gin.H{"Title": "Setup", "Error": "Username required and password at least 8 characters."})
+		s.render(c, "setup.html", gin.H{"Title": "Setup", "Token": token, "Error": "Username required and password at least 8 characters."})
+		return
+	}
+
+	stored, err := auth.SetupTokenStored(c.Request.Context(), s.pool)
+	if err != nil || !auth.VerifySetupToken(stored, token) {
+		s.render(c, "setup.html", gin.H{"Title": "Setup", "Token": token, "Error": "Invalid or expired setup token."})
 		return
 	}
 
@@ -177,19 +188,21 @@ func (s *Server) handleSetupSubmit(c *gin.Context) {
 		Admin:        true,
 	})
 	if err != nil {
-		s.render(c, "setup.html", gin.H{"Title": "Setup", "Error": "Could not create admin. Username may be taken."})
+		s.render(c, "setup.html", gin.H{"Title": "Setup", "Token": token, "Error": "Could not create admin. Username may be taken."})
 		return
 	}
 
-	// consume setup token setting
-	_ = s.db.DeleteSetting(c.Request.Context(), "setup_token")
+	if err := auth.CompleteSetup(c.Request.Context(), s.pool); err != nil {
+		c.String(500, "setup finalize error")
+		return
+	}
 
-	token, err := s.sessions.Create(c.Request.Context(), id, true, c.Request.UserAgent())
+	sessionToken, err := s.sessions.Create(c.Request.Context(), id, true, c.Request.UserAgent())
 	if err != nil {
 		c.String(500, "session error")
 		return
 	}
-	auth.SetSessionCookie(c.Writer, token, auth.SecureCookie(s.cfg.ExternalURL), int(auth.SessionLifetime.Seconds()))
+	auth.SetSessionCookie(c.Writer, sessionToken, auth.SecureCookie(s.cfg.ExternalURL), int(auth.SessionLifetime.Seconds()))
 	c.Redirect(302, "/dashboard")
 }
 
