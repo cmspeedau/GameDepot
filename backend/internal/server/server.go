@@ -53,6 +53,10 @@ func (s *Server) Handler() http.Handler {
 	// Static assets.
 	r.StaticFS("/static", http.FS(s.static))
 
+	// 404/405 pages.
+	r.NoRoute(s.handleNotFound)
+	r.NoMethod(s.handleNotFound)
+
 	// Health.
 	r.GET("/api/v1/health", s.handleHealth)
 
@@ -80,11 +84,23 @@ func (s *Server) handleHealth(c *gin.Context) {
 	c.Status(204)
 }
 
-func (s *Server) render(c *gin.Context, name string, data any) {
+func (s *Server) render(c *gin.Context, name string, data gin.H) {
+	if data == nil {
+		data = gin.H{}
+	}
+	if _, ok := data["Flash"]; !ok {
+		data["Flash"] = c.Query("flash")
+	}
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	if err := s.templates.ExecuteTemplate(c.Writer, name, data); err != nil {
 		slogError(c, err)
+		c.Status(500)
 	}
+}
+
+func (s *Server) handleNotFound(c *gin.Context) {
+	c.Status(404)
+	s.render(c, "error.html", gin.H{"Title": "Not found"})
 }
 
 func (s *Server) requireSession(next gin.HandlerFunc) gin.HandlerFunc {

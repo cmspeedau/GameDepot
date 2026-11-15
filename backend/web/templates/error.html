@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} - GameDepot</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body class="min-h-screen bg-zinc-950 text-zinc-100">
+  {{template "nav" .}}
+  <main class="mx-auto max-w-3xl px-6 py-8">
+    <h1 class="text-xl font-semibold mb-4">{{.Title}}</h1>
+    {{template "flash" .}}
+    <p class="text-zinc-400">Something went wrong.</p>
+    {{if .RequestID}}<p class="text-xs text-zinc-600 mt-4">Request {{.RequestID}}</p>{{end}}
+  </main>
+</body>
+</html>

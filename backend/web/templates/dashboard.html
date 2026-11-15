@@ -8,13 +8,10 @@
   <script src="/static/htmx.min.js" defer></script>
 </head>
 <body class="min-h-screen bg-zinc-950 text-zinc-100">
-  <header class="border-b border-zinc-800 px-6 py-4 flex items-center justify-between">
-    <span class="font-semibold">GameDepot</span>
-    <span class="text-sm text-zinc-400">{{.Username}}</span>
-    <form method="post" action="/signout"><button class="text-sm text-zinc-400 hover:text-zinc-100">Sign out</button></form>
-  </header>
+  {{template "nav" .}}
   <main class="mx-auto max-w-3xl px-6 py-8">
     <h1 class="text-xl font-semibold mb-4">Dashboard</h1>
+    {{template "flash" .}}
     <p class="text-zinc-400">Scaffold is running. More arrives in phase 2.</p>
   </main>
 </body>
