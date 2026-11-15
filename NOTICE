@@ -12,23 +12,18 @@ PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License along with
 this program. If not, see <https://www.gnu.org/licenses/>.
 
-## Upstream attribution
+## Independence
 
-GameDepot is a derivative work of Drop OSS (https://github.com/Drop-OSS/drop),
-which is licensed under the GNU Affero General Public License, version 3.
+GameDepot is an independent implementation. Its database schema, depot format, client
+protocol and desktop core are defined by this project. No source code from another game
+distribution project is included.
 
-The following are carried over from Drop OSS and remain under AGPL-3.0-only:
+AGPL-3.0 is a deliberate choice for this project, not an inherited obligation. The
+project publishes its source so that anyone running a modified instance can obtain it.
 
-- The database schema, including its models, enums and indexes.
-- The desktop client Rust core under `desktop/src-tauri/`.
-- The `libraries/droplet` crate and its manifest and certificate formats.
-- The droplet v2 and `gamedepot-droplet` depot formats.
-- The client HTTP contract and WebSocket protocol.
-- Portions of documentation and naming reused or adapted.
-
-Copyright in the upstream work remains with its authors. This fork does not claim
-ownership of it. Where the fork modifies an upstream file, the modification is
-released under the same license.
+Contributors must not copy code from another project into this repository. If code is
+ever copied from an AGPL project, it remains AGPL and its attribution must be added
+here. See `AGENT.md`.
 
 ## Third-party components
 
@@ -40,11 +35,10 @@ Bundled or linked dependencies keep their own licenses. Notably:
 - HTMX: BSD 2-Clause.
 - Tauri: Apache-2.0 or MIT.
 - The Go standard library and Gin: BSD 3-Clause and MIT respectively.
-- The Rust crates used by the desktop client: as declared in their `Cargo.toml`
-  files.
+- The Rust crates used by the desktop client: as declared in their `Cargo.toml` files.
 
-Run `go mod licenses` or `cargo about` (once configured) for the full dependency list
-of a given build.
+Run `go-licenses` or `cargo about` (once configured) for the full dependency list of a
+given build.
 
 ## Source
 

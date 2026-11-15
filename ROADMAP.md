@@ -1,205 +1,145 @@
 # Roadmap
 
-This roadmap is the plan for replacing the upstream Node/Nuxt server with a Go
-service, and for rebuilding the desktop UI on Vue 3 and Vite. It is ordered so that
-each phase produces something testable against a real client.
+GameDepot is built in phases that each end with something usable. There is no
+compatibility target and no upstream to match, so the order below is the whole plan.
 
-Status legend: `[x]` done and merged, `[ ]` not started, `[~]` partially done.
+Status: `[x]` done, `[ ]` not started, `[~]` in progress.
 
-Nothing in phases 1 to 7 has code behind it. Phase 0 is documentation, which is what
-this repository currently contains.
+Only phase 0 is done. Everything else is a target.
 
 ## Phase 0: foundations
 
-Documentation, license and repository control.
-
 - [x] Write `README.md`, `ARCHITECTURE.md` and this roadmap.
-- [x] Record the architectural decisions in `docs/adr/`.
-- [x] Document the desktop client HTTP contract in `docs/CLIENT-API.md`.
-- [x] Add `AGENT.md` and `CONTRIBUTING.md` with fork boundary and branch rules.
+- [x] Record the core decisions in `docs/adr/`.
+- [x] Document the planned desktop HTTP contract.
+- [x] Add `AGENT.md` and `CONTRIBUTING.md`.
 - [x] Add `SECURITY.md` with the threat model.
-- [x] Add AGPL-3.0 `LICENSE` and a `NOTICE` with upstream attribution.
-- [x] Initialise git with `main` as the default branch, `.gitignore`, `.gitattributes`
-      and `.editorconfig`.
+- [x] Add AGPL-3.0 `LICENSE` and `NOTICE`.
+- [x] Initialise git with `main` as the default branch and repository control files.
 
 Exit criteria: a new contributor can read the docs and know what is being built, why,
 and in which order.
 
 ## Phase 1: scaffold
 
-A Go service that boots, connects to the database, serves the dashboard shell, and a
-desktop client that builds without Nuxt.
+- [ ] `backend/` Go module, `cmd/server` with config, pgx pool, HTTP server and clean
+      shutdown.
+- [ ] Config parser for the variables in `docs/OPERATIONS.md`, validated at boot.
+- [ ] goose migrations for the first schema, applied by a `migrate` subcommand and on
+      boot in development.
+- [ ] sqlc setup and the first query set for users, sessions and settings.
+- [ ] Dashboard shell: layout, navigation, Tailwind pipeline, vendored HTMX, flash
+      messages, error pages.
+- [ ] Setup and sign-in pages rendering against stub handlers.
+- [ ] `desktop/` Tauri 2 project with Vue 3, Vite, shadcn-vue, Tailwind v4, and a
+      window that opens.
+- [ ] `deploy/` Dockerfile and compose file for the server and PostgreSQL.
 
-- [ ] `go.mod` for Go 1.26 at the repository root target `backend/`.
-- [ ] `cmd/server` that loads config, opens a pgx pool, starts the HTTP server, and
-      shuts down cleanly on signal.
-- [ ] Config package with parity for every environment variable in
-      `docs/adr/0004-configuration-parity.md`.
-- [ ] `sql/schema.sql` generated once from the frozen Prisma migrations, plus a goose
-      baseline that records the version without altering an existing database.
-- [ ] sqlc configuration and a first query set for `User`, `Session`, `APIToken`.
-- [ ] Dashboard shell: layout, navigation, Tailwind pipeline, HTMX vendored locally,
-      flash messages, error pages.
-- [ ] Setup and sign-in pages rendering, wired to stub handlers.
-- [ ] Desktop: Vue 3 + Vite project replacing Nuxt, `unplugin-vue-router`,
-      auto-imports, `NuxtLink` shim, Tailwind v4 palette, `vite build` output consumed
-      by `tauri.conf.json`. The existing screens must render.
+Exit criteria: `go build ./...` and `pnpm build` succeed, the dashboard renders, and
+the desktop window opens from the Vite build.
 
-Exit criteria: `go build ./...` and `pnpm build` in `desktop/main` both succeed; the
-dashboard renders an empty shell; the desktop app opens its sign-in screen from the
-Vite build.
+## Phase 2: identity
 
-## Phase 2: identity and dashboard
-
-Everything needed to sign in, create the first account, and approve a client.
-
-- [ ] Argon2id password hashing with bcrypt verification fallback for existing rows.
-- [ ] `drop-token` session cookie, `Session` rows, sign-in, sign-out, remember me.
-- [ ] ACL manager: global ACLs, user ACLs, admin flag, 10 minute superlevel window.
-- [ ] Setup token printed to logs on first run, consumed by `POST /api/v1/setup`.
-- [ ] Invitation creation and redemption, including signup gating.
-- [ ] User list, edit, disable, password reset, ACL assignment.
+- [ ] Argon2id passwords, sign-in, sign-out, session cookie, CSRF.
+- [ ] First-run setup token printed in the log and consumed by `/setup`.
+- [ ] Invitations, signup gating, user list, disable and password reset.
 - [ ] Session list and revocation.
-- [ ] Client pairing: code display, approval page, `Client` row, certificate issuance.
-- [ ] CSRF tokens on every dashboard form, same-origin checks on WebSocket upgrades.
-- [ ] Dashboard security headers and cache policy.
+- [ ] Device pairing: code issue, dashboard approval, one-time claim, hashed client
+      token.
+- [ ] Client list and revocation in the dashboard.
+- [ ] Rate limits on sign-in, setup and pairing.
 
-Exit criteria: a fresh database reaches a signed-in admin through the browser, and the
-desktop pairing code can be approved in the dashboard.
+Exit criteria: a fresh database reaches a signed-in admin, and a desktop device pairs
+through the dashboard and holds a working token.
 
-## Phase 3: objects and catalog
+## Phase 3: catalog and objects
 
-The content an admin manages before any game can be downloaded.
+- [ ] Object store with content type, ETag, cache headers and streaming reads.
+- [ ] Cover, icon and avatar upload.
+- [ ] Games: create, edit, delete, description, release date, platform.
+- [ ] Companies, tags and the game relations.
+- [ ] Versions and launch configurations.
+- [ ] Collections.
+- [ ] Admin lists with pagination, search and HTMX fragments.
 
-- [ ] Filesystem object store with permissions, ETag, `If-None-Match`, and streaming
-      reads at `/api/v1/object/:id`.
-- [ ] Image upload and resize for logos, avatars, covers and screenshots.
-- [ ] Games: create, edit, delete, platforms, release date, description.
-- [ ] Companies, tags, genres, age ratings and rating organizations.
-- [ ] Game versions: list, edit, delete, launch configurations and setups.
-- [ ] Collections and collection entries.
-- [ ] Store listing fields needed by the desktop client, if store mode is enabled.
-- [ ] Admin list views with pagination, search and filters, rendered as HTMX fragments.
+Exit criteria: an admin can create a game with a cover, a version and a launch
+configuration, and the desktop can list it through the API.
 
-Exit criteria: an admin can create a game with a cover and a version row in the
-dashboard, and the desktop client can list it through `/api/v1/client/game`.
+## Phase 4: releases and depot
 
-## Phase 4: library and depot in Go
-
-The data plane, which is the part the Rust `torrential` service used to own.
-
-- [ ] Filesystem library provider: detect a version directory, list files, stat files.
-- [ ] Flat library provider for single-archive imports.
-- [ ] Droplet v2 manifest generation: descending size sort, 64 MiB chunks, at most 512
-      files per chunk, random 16-byte key, random 16-byte IV per chunk, SHA-256 over
-      plaintext, AES-128-CTR with a 64-bit little-endian counter.
-- [ ] Byte-for-byte equivalence tests against `libraries/droplet` vectors.
-- [ ] CAS publish: 4 MiB fixed chunks, `objects/<xx>/<sha256>`, canonical JSON
-      `gamedepot-droplet` v1 manifest, `manifests/<digest>.json`, atomic rename after
-      verify.
-- [ ] Depot HTTP surface at `/api/v1/depot/`: `manifest.json`, `speedtest`,
-      `content/{game}/{version}/{chunk}`, `POST /invalidate`, `/healthcheck`.
-- [ ] `Depot` row upsert pointing at `${EXTERNAL_URL}/api/v1/depot/`.
-- [ ] CA and certificate issuance in pure Go, compatible with stored PEM bundles.
-- [ ] Import wizard: pick a source, pick a directory, generate the manifest, publish.
+- [ ] Library sources, directory scan and version detection.
+- [ ] Release build: 4 MiB chunks, SHA-256 over plaintext, AES-256-GCM per object,
+      canonical manifest, manifest digest.
+- [ ] Atomic publish: temp write, fsync, rename, manifest last.
+- [ ] Depot routes for manifest and object reads, with range support.
+- [ ] Integrity check that rehashes every object in a release.
 - [ ] Task registry with progress, logs and cancellation.
-- [ ] Task WebSocket feed with the existing text protocol.
+- [ ] Dashboard publish flow and task view.
 
-Exit criteria: a release generated by Go is downloaded and verified by an unmodified
-desktop client, and a legacy droplet v2 chunk decrypts correctly.
+Exit criteria: a directory becomes a release, an object serves a valid range, and the
+integrity check passes on a fresh publish.
 
-## Phase 5: desktop client contract
+## Phase 5: desktop client
 
-The 18 endpoint families the Tauri client calls, plus saves and import sessions.
+- [ ] Pairing UI, token storage in the OS keyring, sign-out.
+- [ ] Library fetch with local install state in SQLite.
+- [ ] Resumable download: parallel chunks, verify, decrypt, write, retry with backoff.
+- [ ] Install layout, file modes, conflict handling.
+- [ ] Launch: process spawn, environment, working directory, exit status.
+- [ ] Playtime reporting.
+- [ ] Settings: server URL, download directory, concurrency, theme.
 
-- [ ] `POST /api/v1/client/auth/initiate`, code WebSocket, `POST /auth/handshake`.
-- [ ] `GET /api/v1/client/user`, `GET /user/library`.
-- [ ] `GET /api/v1/client/game`, `GET /game/manifest`, `GET /depots`.
-- [ ] `POST /api/v1/client/depot/import/session` and its chunk upload path.
-- [ ] `GET /api/v1/client/depot/manifest`, `GET /depot/content/...`.
-- [ ] `GET /api/v1/settings`, `GET /api/v1`.
-- [ ] Playtime reporting and aggregation.
-- [ ] Profiles and profile images.
-- [ ] Collections read path.
-- [ ] Saves: manifests, versions, conflict rules, retention, `saves/manifests/{gameId}`.
-- [ ] Auth parity suite: replay every desktop request against both servers and diff.
+Exit criteria: pair, download, install and launch a real game, with playtime recorded,
+then relaunch after a client restart.
 
-Exit criteria: pair, list, download, launch and record a play session with the real
-Tauri client, then sync a save.
+## Phase 6: operations
 
-## Phase 6: ingestion and metadata
+- [ ] Structured logs with request ids.
+- [ ] Health and readiness endpoints.
+- [ ] Integrity and cleanup tasks on a schedule.
+- [ ] Backup and restore runbook tested against a real dump.
+- [ ] Single image build with embedded assets and migrations.
+- [ ] Upgrade procedure and version reporting.
 
-Breadth. This phase is the most exposed to third-party services.
+Exit criteria: a fresh host runs from compose, survives a restart and restores from
+backup.
 
-- [ ] Encrypted store connection store using a 32-byte credential key.
-- [ ] GOG: OAuth device flow, depot manifests, CDN streaming.
-- [ ] Epic: authorization code, entitlement check, manifest and chunk download.
-- [ ] Ubisoft Connect: session API, game streaming.
-- [ ] EA: ticket flow, library listing.
-- [ ] Ingest queue with task keys, so a duplicate ingest is refused rather than queued.
-- [ ] Provider build ID, release manifest ID and content digest kept as separate
-      identities.
-- [ ] Metadata providers: IGDB, GiantBomb, PCGamingWiki, Steam, manual entry.
-- [ ] Metadata matching UI in the dashboard.
-- [ ] Update check per connection, queued through the same ingest pipeline.
+## Phase 7: breadth
 
-Exit criteria: a GOG and an Epic title ingest end to end from the dashboard, and a new
-build of an already ingested title queues itself.
+- [ ] Cloud saves: slots, versions, conflict detection, retention, pinning.
+- [ ] Store ingestion: GOG first, then Epic, with an encrypted connection store.
+- [ ] Metadata providers with a manual fallback.
+- [ ] Cache node for LAN and offline use (see below).
+- [ ] Emulator and compatibility-tool launch helpers.
 
-## Phase 7: cutover
-
-Replace the Node server in production.
-
-- [ ] OIDC, WebAuthn and TOTP only if a concrete need remains after the UI change.
-- [ ] Nightly compatibility run against a database dumped from a live upstream install.
-- [ ] End-to-end suite: setup, invite, sign in, pair, import, download, play, save.
-- [ ] Single image build: Go binary, dashboard assets, migrations, no Node.
-- [ ] Restore-from-backup runbook tested against a real backup.
-- [ ] Release notes describing what an operator must do to swap binaries.
-- [ ] Tag the first release, publish source and image.
-
-Exit criteria: an existing install swaps the image, keeps its sessions, tokens and
-paired clients, and needs no manual database work.
-
-## Explicitly out of scope
-
-These were removed from the rewrite and are not planned:
-
-- The Nuxt web UI, the Nitro server, and the browser player experience.
-- Prisma at runtime, and the Node migration runner.
-- The Rust `torrential` service, its protobuf socket and the nginx split.
-- Public store browsing, news, community pages and public user profiles in the browser.
-- Web sessions, browser WebAuthn, browser TOTP and browser OIDC flows.
-- Web tokens minted for the removed web UI.
-
-Archive-backed library versions (zip, 7z, iso) are a possible later item. Phase 4
-ships directory versions first, because the Rust backend treated archives as a separate
-backend and the Go port can add it without changing the manifest format.
+Exit criteria: a store title ingests without a local copy, and a save round-trips
+between two devices.
 
 ## Future ideas
 
-Recorded so they are not lost. These are not phases, have no exit criteria, and can
-change before anyone builds them.
+Recorded so they are not lost. These are not phases and have no exit criteria.
 
 ### Cache node
 
-A small node that sits between clients and the main GameDepot server, so LAN parties
-and offline setups pull bytes locally instead of over the WAN.
+A small node between clients and the main server, so LAN parties and offline setups
+pull bytes locally instead of over the WAN.
 
 **Milestone 1: proxy node (plumbing, low risk)**
 
 - A small image, either by extending the repo-root Dockerfile and compose file or by
   running a parallel service.
-- Manifest and metadata requests are always forwarded live to upstream. They are small,
-  and forwarding keeps versions in sync automatically.
-- Content and blob requests are forwarded upstream. No caching yet.
-- Auth tokens are validated against upstream, so the node cannot act as an open proxy.
+- Manifest and metadata requests are forwarded live to upstream. They are small, and
+  forwarding keeps versions in sync automatically.
+- Object requests are forwarded upstream. No caching yet.
+- Client tokens are validated against upstream, so the node cannot act as an open
+  proxy.
 - The client gets a cache URL setting that overrides the server URL.
 
-**Milestone 2: blob cache**
+**Milestone 2: object cache**
 
-- Content-addressed cache on the node's volume. A cached blob cannot be stale because
-  its name is its hash. Eviction means dropping a file, with no invalidation logic.
+- Content-addressed cache on the node's volume. A cached object cannot be stale because
+  its name is the hash of its plaintext. Eviction means dropping a file, with no
+  invalidation logic.
 - LRU eviction against a disk quota.
 - Serve on miss, proxying and filling the cache, or cache-only mode, serving only what
   is already resident.
@@ -211,14 +151,12 @@ and offline setups pull bytes locally instead of over the WAN.
 - Pin games so they are never evicted. Everything else stays LRU.
 - Node status view: disk usage, what is resident, cache hit and miss statistics.
 
-**Placement:** before or alongside user libraries, not before the depot exists. The
-Epic `appName` correctness fix has landed in the fork parent (required by the ingest
-route, sent in the launcher assets query, and used in the manifest download URL at
-`/appName/<name>/manifest/`), so it no longer gates this work.
+**Placement:** after the depot and desktop client work, alongside the breadth phase.
+The cache is useful only once releases and object reads are stable.
 
-**Design decision to settle first:** per-chunk caching or whole-file caching. Per-chunk
-is what makes pre-caching and bandwidth sharing cheap, but it couples the cache to the
-depot download protocol. Whole-file is simpler and independent, but it stores and moves
-more bytes than a client may need. Current lean: per-chunk, since the protocol already
-streams in chunks. Decide before the ingest manifest format is frozen, because the cache
-key design affects it.
+**Design decision to settle first:** cache per chunk or per whole file. Per chunk is
+what makes pre-caching and deduplication cheap, and the protocol already streams in
+chunks, but it couples the cache to the release manifest. Whole file is simpler and
+independent, at the cost of storing and moving more bytes than a client may need.
+Current lean: per chunk, since objects are already the unit of transfer. Decide before
+the manifest format is frozen in phase 4.

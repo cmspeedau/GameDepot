@@ -76,13 +76,14 @@ For a patch or minor release within the compatible line:
 3. Swap the binary or image.
 4. Start the new process.
 
-No migration runs. The server verifies the schema version it expects and refuses to
-start with a specific message if the database is older or newer than supported, rather
-than half-working.
+- The server applies pending goose migrations on boot when `GAMEDEPOT_AUTO_MIGRATE=true`,
+  which is the default in development. In production, run `gamedepot migrate` before
+  swapping the binary, or set the variable true for the first boot.
+- A failed migration stops the process. There is no half-applied boot.
 
 ## Health and monitoring
 
-- `GET /api/v1/depot/healthcheck` returns 200 when the depot can read its root.
+- `GET /api/v1/health` returns 200 when the database and depot root are reachable. The depot also exposes `GET /api/v1/depot/healthcheck` for a lighter check.
 - Readiness should also check the database. Use the container healthcheck once it exists.
 - Logs are JSON on stdout. Ship them with whatever the host provides; no log file is
   written.

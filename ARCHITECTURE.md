@@ -1,543 +1,454 @@
 # Architecture
 
-This document describes how GameDepot is meant to be built: the processes, the modules,
-the data model, and the formats that must match the existing clients. It also records
-what is being removed and why. Where it states a format detail, that detail is a
-compatibility requirement, not a preference.
+How GameDepot is built: processes, modules, schema, formats and the rules that keep
+them coherent. Everything here is defined by this project. There is no external
+contract to satisfy.
 
-Status: design target. Nothing in phases 1 to 7 of the roadmap exists yet.
+Status: design target. No code exists yet.
 
-## 1. Constraints
+## 1. Principles
 
-Four constraints drive the design.
-
-1. **The desktop client is the product.** It is a Tauri application with a Rust core
-   that already handles pairing, downloads, launching, process management, saves and
-   mods. It must keep working against a new server.
-2. **Existing installs swap binaries.** The PostgreSQL schema is frozen. No boot-time
-   migration, no data rewrite, no forced re-login, no re-pairing of clients.
-3. **One server process.** No nginx, no protobuf sidecar, no separate depot service, no
-   Node runtime. The server is a single Go binary plus PostgreSQL.
-4. **No Node in the server image.** The dashboard is server-rendered HTML. The desktop
-   client may use Node at build time only.
+1. **One server process.** HTTP API, dashboard and depot run in one Go binary.
+   PostgreSQL is the only external service.
+2. **Content addressed.** Every release object is named by the SHA-256 of its plaintext.
+   Identity and integrity are the same thing.
+3. **Verify before use.** A client hashes ciphertext, decrypts, hashes plaintext, and
+   only then writes a file.
+4. **Server-rendered administration.** The dashboard is HTML, not a second application.
+5. **Small client contract.** The desktop calls a narrow API with one credential type.
+6. **Fail closed.** Missing keys, bad hashes, unknown paths and expired tokens are
+   errors, not warnings.
 
 ## 2. Runtime topology
 
 ```text
-                    ┌──────────────────────────────┐
-  Desktop client    │  Go server (Gin)             │
-  Tauri + Rust  ────┤  /api/v1/client/*            │
-  JWT ES384         │  /api/v1/depot/*             │
-                    │  /api/v1/*                   │
-                    │                              │
-  Browser        ───┤  /dashboard/*   HTML + HTMX  │──────┐
-  drop-token cookie │  /auth/*        setup, auth  │      │
-                    └──────────────┬───────────────┘      │
-                                   │                      │
-                        ┌──────────┴──────────┐   ┌───────┴────────┐
-                        │  PostgreSQL         │   │  Filesystem    │
-                        │  frozen schema      │   │  /library      │
-                        └─────────────────────┘   │  /data         │
-                                                  └────────────────┘
+                     ┌───────────────────────────────┐
+  Desktop client     │  Go server (Gin)              │
+  Tauri + Rust  ─────┤  /api/v1/*          JSON      │
+  Bearer token       │  /api/v1/depot/*    objects   │
+                     │  /dashboard/*       HTML      │
+  Browser        ─────┤  /setup, /signin   HTMX      │
+  session cookie     └───────────────┬───────────────┘
+                                     │
+                         ┌───────────┴───────────┐
+                         │  PostgreSQL           │
+                         └───────────────────────┘
+                         ┌───────────┴───────────┐
+                         │  Filesystem           │
+                         │  DATA: objects, depot │
+                         │  LIBRARY: sources     │
+                         └───────────────────────┘
 ```
 
-There is no separate depot port. The desktop client discovers the depot through the
-`Depot` table, whose single row points at `${EXTERNAL_URL}/api/v1/depot/`. In the old
-deployment that URL was served by nginx in front of `torrential` on port 5000. In the
-new deployment Gin serves it on the same port as everything else. Clients that already
-have the URL stored keep using it.
-
-### Removed from the old topology
-
-| Removed | Replaced by |
-| --- | --- |
-| Nuxt/Nitro server | Gin `html/template`, HTMX, Tailwind |
-| Prisma runtime and migration deploy | Frozen SQL baseline, goose version record only |
-| Rust `torrential` | Go depot package in the same binary |
-| nginx | Direct listeners; TLS terminates at the operator's proxy |
-| Protobuf control socket on port 33148 | In-process function calls |
-| Port 5000 | Nothing |
-| `libraries/droplet` in the server | Kept only as a desktop download dependency |
+TLS terminates at the operator's proxy. The server listens on plain HTTP.
 
 ## 3. Repository layout
 
 ```text
 backend/
-  cmd/server/main.go          boot, config, pool, scheduler, HTTP, shutdown
+  cmd/server/main.go        boot, config, pool, migrations, HTTP, shutdown
   internal/
-    api/                      route registration, DTOs, error mapping
-      client/                 desktop client endpoints
-      depot/                  data plane endpoints
-      dashboard/              HTML handlers
-      auth/                   setup, sign-in, sign-out, invitations
-    acl/                      ACL evaluation, superlevel windows
-    auth/                     password hashing, sessions, tokens
-    catalog/                  games, companies, tags, versions, collections
-    objects/                  filesystem object store
-    library/                  providers, manifests, import
-    depot/                    droplet v2, CAS, chunk serving
-    clients/                  pairing, certificates, JWT verification
-    saves/                    save manifests, versions, slots, conflicts
-    playtime/                 playtime ingestion and aggregation
-    tasks/                    task registry, progress bus
-    notify/                   notifications
-    metadata/                 IGDB, GiantBomb, Steam, PCGamingWiki
-    stores/                   GOG, Epic, Ubisoft, EA adapters
-    config/                   environment parsing, validation
-    database/                 pgx pool, transaction helpers
-    web/                      templates, static assets, Tailwind output
+    api/                    route registration, DTOs, error mapping
+      client/               desktop endpoints
+      depot/                manifest and object reads
+      dashboard/            HTML handlers and fragments
+      auth/                 setup, sign-in, sign-out, invitations, pairing
+    auth/                   passwords, sessions, tokens, pairing
+    acl/                    roles and scopes
+    catalog/                games, companies, tags, versions, collections
+    objects/                small immutable blobs
+    library/                source scan, version detection, release build
+    depot/                  chunking, encryption, manifests, serving
+    tasks/                  task registry and progress
+    config/                 environment parsing and validation
+    database/               pgx pool, transactions
+    web/                    templates, static assets, embedded Tailwind
   sql/
-    schema.sql                baseline generated from Prisma migrations
-    queries/*.sql             sqlc inputs
-    migrations/               goose, baseline only
+    migrations/             goose migrations, numbered
+    queries/                sqlc inputs
   sqlc.yaml
 desktop/
-  main/                       Vue 3 + Vite UI
-  src-tauri/                  Rust core, unchanged in phase 1
-libraries/
-  droplet/                    Rust crate used by the desktop
+  src/                      Vue 3 application
+  src-tauri/                Rust core and Tauri configuration
+  index.html
+  vite.config.ts
+  package.json
 deploy/
   Dockerfile
   compose.yaml
 docs/
 ```
 
-The upstream repository also contains `cli/`, `app/`, `backend/`, `torrential/`,
-`packages/` and `ubisoft-demux/`. Of those:
-
-- `cli/` is a small operator manifest tool. Port it to a Go subcommand only if operators
-  still need it; otherwise leave it out.
-- `app/` is a single stray admin page and is not carried over.
-- `backend/` is an unrelated Go scaffold using gorilla/mux and is not carried over.
-- `torrential/` and `packages/` are dropped.
-- `ubisoft-demux/` supports Ubisoft ingestion and is dropped with the Ubisoft adapter
-  rewrite, unless live testing shows the protocol work is not reproducible in Go.
-
 ## 4. HTTP surface
 
-Three groups, separated by authentication mechanism and by consumer.
+Three groups, separated by consumer and credential.
 
-### 4.1 Client API (`/api/v1/client/*`)
+### 4.1 Client API (`/api/v1/*`)
 
-JSON, consumed by the Tauri client. Authenticated with `Authorization: JWT <clientId>
-<jwt>`. The JWT is ES384, signed by the private key of the client certificate issued
-during pairing. Verification uses the certificate stored in the `Certificate` table, so
-certificates issued by the old server keep verifying.
+JSON, consumed by the desktop client. Authenticated with
+`Authorization: Bearer <client token>`. The token is 32 random bytes, issued once at
+pairing, stored as a SHA-256 hash, and revocable per client.
 
-The full contract is in [`docs/CLIENT-API.md`](docs/CLIENT-API.md). The endpoint families are:
+The full contract is in [`docs/CLIENT-API.md`](docs/CLIENT-API.md).
 
 ```text
-auth/initiate, auth/code/ws, auth/handshake
-user, user/library, user/webtoken (removed, see 4.4)
-game, game/manifest
-depot/manifest, depots
-depot/content/{game}/{version}/{chunk}
-depot/import/session
-playtime
-profiles
-collection
-saves/manifests/{gameId}
+POST /api/v1/pairing/initiate
+POST /api/v1/pairing/claim
+GET  /api/v1/me
+GET  /api/v1/library
+GET  /api/v1/games/{id}
+GET  /api/v1/games/{id}/versions
+GET  /api/v1/releases/{versionId}
+GET  /api/v1/depot/manifests/{digest}
+GET  /api/v1/depot/objects/{sha256}
+GET  /api/v1/playtime
+POST /api/v1/playtime
+GET  /api/v1/collections
+POST /api/v1/collections
+DELETE /api/v1/collections/{id}
+GET  /api/v1/settings
+GET  /api/v1/health
 ```
 
-### 4.2 Data plane (`/api/v1/depot/*`)
+### 4.2 Dashboard (`/dashboard/*`, `/setup`, `/signin`)
 
-Served by Gin, no session, no bearer token. The chunk URL itself is the capability: it
-contains the game, version and chunk identifiers that only a paired client learns from
-a manifest. Content is AES-128-CTR encrypted with a per-release key that is only in the
-manifest, so knowing a URL is not enough to read bytes usefully.
-
-```text
-GET  /api/v1/depot/manifest.json                  depot capability and manifest list
-GET  /api/v1/depot/speedtest                      50 MiB of zeros
-GET  /api/v1/depot/content/{game}/{version}/{chunk}
-POST /api/v1/depot/invalidate                     drops cached manifest context
-GET  /api/v1/depot/healthcheck
-```
-
-### 4.3 Dashboard (`/dashboard/*`, `/auth/*`)
-
-HTML, consumed by a browser. Session cookie `drop-token`, `HttpOnly`, `SameSite=Lax`,
-`Secure` when the external URL is HTTPS. Every state-changing form carries a CSRF token
-derived from the session and compared in constant time.
+HTML, consumed by a browser. Session cookie `gamedepot_session`, `HttpOnly`,
+`SameSite=Lax`, `Secure` when the external URL is HTTPS. Every state-changing form
+carries a CSRF token bound to the session and compared in constant time.
 
 ```text
-GET  /auth/signin, POST /auth/signin
-GET  /auth/signup, POST /auth/signup        invitation-gated
-GET  /auth/setup,  POST /auth/setup         setup token, first run only
-GET  /auth/signout
-GET  /dashboard                             overview
-GET  /dashboard/catalog, /catalog/games/{id}, /catalog/companies, /tags
-GET  /dashboard/library, /library/sources, /library/import
-GET  /dashboard/depot, /depot/connections, /depot/publish
-GET  /dashboard/tasks, /tasks/{id}
-GET  /dashboard/clients                     pairing approvals
+GET  /setup, POST /setup                     first run, setup token
+GET  /signin, POST /signin
+POST /signout
+GET  /dashboard                              overview
+GET  /dashboard/games, /games/{id}
+GET  /dashboard/companies, /tags
+GET  /dashboard/library, /library/sources
+GET  /dashboard/releases, /releases/{id}
+GET  /dashboard/clients
 GET  /dashboard/users, /users/{id}, /users/invitations
-GET  /dashboard/saves, /dashboard/settings
+GET  /dashboard/tasks, /tasks/{id}
+GET  /dashboard/settings
 ```
 
-Every list is an HTMX fragment endpoint under `/dashboard/_/*`, so pagination, search
-and inline edits return partial HTML rather than JSON.
+Lists and inline actions return fragments under `/dashboard/_/*` for HTMX.
 
-### 4.4 Public API kept for compatibility
+### 4.3 Depot (`/api/v1/depot/*`)
 
-The old server exposed `/api/v1/index.get`, `/api/v1/settings` and `/api/v1/setup`.
-`/api/v1/settings` is read by the desktop client. `/api/v1/setup` consumes the setup
-token and is kept so a first run does not change shape. Everything else at `/api/v1/*`
-that existed only to feed the removed web UI is dropped.
-
-Dropped route families include `/api/v1/store/*`, `/api/v1/news/*`, `/api/v1/screenshots/*`
-reads used by the web pages, `/api/v1/user/*` web account routes, `/api/v1/admin/*`
-JSON routes superseded by dashboard handlers, and `client/user/webtoken`, which only
-minted tokens for the removed web client.
+Object and manifest reads for authenticated clients. No separate port and no proxy.
+The manifest contains the release key, so it is only served to a client with access to
+the game. Objects are ciphertext and useless without that key.
 
 ## 5. Authentication and authorization
 
-Four credential types coexist, all backed by the frozen schema.
-
 ### 5.1 Dashboard sessions
 
-- Sign-in matches `User.username`, looks up `LinkedAuthMec` with `mec = Simple`, and
-  verifies the stored password hash.
-- Argon2id hashes are the default for new passwords. Existing bcrypt hashes verify and
-  are rehashed on the next successful sign-in, so the fallback can be removed later.
-- A row in `Session` holds the session token, user, expiry and remember-me flag. The
-  cookie value is the session token.
-- Sessions expire on a fixed horizon and are revoked by deleting the row. A dashboard
-  page lists sessions with user agent and last use.
-- ACL evaluation order: explicit user ACLs, group ACLs, admin override, then the
-  superlevel window. The window is a short-lived elevation recorded in the session and
-  used for destructive operations such as deleting a game or minting a token.
+- Sign-in matches `users.username` and verifies an Argon2id hash.
+- `sessions` stores a SHA-256 hash of the cookie token, not the token itself, plus a
+  CSRF secret, user agent, IP and expiry.
+- Cookie: 32 random bytes, base64url. Session lifetime 30 days, 90 with remember me.
+- CSRF: 32 random bytes per session, rendered into each form, rotated on sign-in.
+- Sign-out deletes the row. A dashboard page lists sessions and revokes them.
+- Failed sign-ins are rate limited per IP and per username.
 
-### 5.2 API tokens
+### 5.2 First run
 
-`APIToken` rows carry `mode` (`User`, `Client`, `System`) and a string array of ACLs.
-Bearer authentication reads the token, compares a hash, applies the ACLs, and records
-last use. System tokens with the `setup` ACL are created once at first boot, printed to
-the log, and deleted by a successful setup.
+- On boot with no users and no completed setup, the server creates a setup token, stores
+  its hash in `settings`, and prints the token once at `info` level.
+- `POST /setup` accepts the token, creates the admin, deletes the setting and signs the
+  user in.
+- While setup is incomplete, every other route except health returns 503 with a link to
+  `/setup`.
 
-### 5.3 Desktop client certificates
+### 5.3 Invitations
 
-Pairing creates a `Client` row and a `Certificate` row. The certificate is ECDSA P-384,
-issued by an internal CA whose root PEM lives in the object store under the key `ca`.
-The client receives `{private, certificate, id}` from `POST /api/v1/client/auth/handshake`
-and signs an ES384 JWT for every request.
+- An admin creates an invitation. The server returns a single-use code once and stores
+  its hash.
+- Signup requires a valid, unused, unexpired invitation.
+- Redemption creates the user and marks the invitation used in one transaction.
 
-The server verifies with the stored certificate, not with the CA, so a client paired
-under the old server authenticates without renewal. The CA only signs new certificates.
-Root and leaf certificates use the same distinguished name shape and key usage as the
-Rust implementation, so bundles are interchangeable.
+### 5.4 Device pairing
 
-### 5.4 Pairing
+1. Desktop calls `POST /api/v1/pairing/initiate` with a device name and platform. It
+   receives an eight-character code (Crockford base32, uppercase) valid for ten minutes.
+2. The user opens `/dashboard/clients`, enters the code, and approves. Approval binds
+   the pending code to the signed-in user.
+3. Desktop calls `POST /api/v1/pairing/claim` with the code. On success it receives
+   `{clientId, token}` exactly once. The code is then consumed.
+4. The token is stored hashed in `clients`. Every client request presents it as a
+   Bearer token.
 
-The code flow stays:
+Codes are rate limited, single use, and expire. A claimed token can be revoked from the
+dashboard, which takes effect on the next request.
 
-1. Desktop calls `POST /api/v1/client/auth/initiate` with its name and capabilities.
-   It receives a short code, or a URL to `/client/authorize/<clientId>`.
-2. An admin opens `/dashboard/clients`, enters the code, and confirms. That binds the
-   pending client to a `User` and issues the certificate.
-3. The desktop holds a WebSocket at `/api/v1/client/auth/code/ws`, receives the token
-   over it, then calls `POST /api/v1/client/auth/handshake` for the certificate bundle.
+### 5.5 Scopes
 
-The dashboard replaces the two Nuxt pages that used to do step 2 (`pages/client/code`
-and `pages/client/authorize`). Existing clients see no change.
+Client tokens carry a scope list, fixed at pairing:
+
+| Scope | Grants |
+| --- | --- |
+| `library:read` | Me, library, games, versions, releases, manifests, objects |
+| `playtime:write` | Posting playtime |
+| `collections:write` | Creating and deleting collections |
+| `saves:read`, `saves:write` | Cloud saves, phase 7 |
+
+A route requires a scope and returns 403 when it is missing. Admin routes are not
+reachable with a client token at all.
 
 ## 6. Data model
 
-37 models and 12 enums, frozen from the upstream Prisma schema. Table and column names,
-enum labels and array columns are unchanged. The Go code names tables in SQL, not
-through an ORM, so nothing depends on Prisma naming at runtime.
+The schema is owned by this project and evolves with goose migrations. No compatibility
+with any other installation is promised.
 
-| Group | Models |
+| Group | Tables |
 | --- | --- |
-| Identity | `User`, `LinkedAuthMec`, `LinkedMFAMec`, `APIToken`, `Session`, `Invitation`, `UserGroup` |
-| Clients | `Client`, `Certificate` |
-| Catalog | `Game`, `GameVersion`, `Company`, `GameTag`, `GameAgeRating`, `BannedAgeRating`, `GameRating`, `LaunchConfiguration`, `Collection`, `CollectionEntry`, `Screenshot`, `Article`, `NewsTag` |
-| Library | `Library`, `UnimportedGameVersion`, `Depot` |
-| Content | `ObjectHash`, `Task` |
-| Player | `Playtime`, `Profile`, `SaveManifest`, `SaveSlot`, `SaveVersion` |
-| Stores | `StoreConnection`, `StoreManifest` |
-| System | `ApplicationSettings`, `SetupConfiguration` |
+| Identity | `users`, `sessions`, `invitations`, `api_tokens` |
+| Clients | `clients`, `pairing_codes` |
+| Catalog | `games`, `companies`, `game_companies`, `tags`, `game_tags`, `game_versions`, `launches`, `collections`, `collection_entries` |
+| Content | `objects`, `releases`, `libraries` |
+| Player | `playtime`, `saves`, `save_versions` (phase 7) |
+| System | `tasks`, `settings`, `store_connections` (phase 7) |
 
-Enums: `Platform`, `GameType`, `LibraryBackend`, `MetadataSource`, `AuthMec`, `MFAMec`,
-`APITokenMode`, `ClientCapabilities`, `StoreProvider`, `SyncStatus`, `SaveVersionKind`,
-`AgeRatingOrganization`.
+Conventions:
 
-The baseline is generated once from the 131 Prisma migrations into `sql/schema.sql`.
-The goose baseline records a version without executing DDL when the tables already
-exist. A fresh database gets the same DDL Prisma would have produced; an existing
-database is untouched.
+- Primary keys are UUIDv7, generated by the application.
+- Timestamps are `timestamptz`, stored in UTC.
+- Enums are PostgreSQL enum types or checked text. Small, stable sets use enum types.
+- JSON columns are `jsonb` and validated in Go before write.
+- Every foreign key has an index. Every list query has an index that covers its sort.
 
-### 6.1 Query layer
+Migrations run from a single `migrations` command and on boot when
+`GAMEDEPOT_AUTO_MIGRATE=true`. A failed migration stops the process; there is no
+half-applied boot.
 
-sqlc generates typed Go from hand-written SQL in `sql/queries`. Listing endpoints, the
-store query, save manifest assembly and the library scan are the expensive paths and are
-written as explicit SQL. Transactions are opened through a small helper so handlers do
-not manage `pgx.Tx` by hand.
+### 6.1 Queries
+
+sqlc generates Go from hand-written SQL in `sql/queries`. Handlers never build SQL by
+string concatenation. Transactions use a helper that takes a function and commits only
+on success.
 
 ## 7. Object store
 
-Small immutable blobs (images, certificates, icons) live under `${DATA}/objects` and are
-served at `/api/v1/object/:id`.
+Small immutable blobs: covers, icons, avatars. Stored under `${DATA}/objects` and served
+from `/api/v1/objects/{id}`.
 
-- Content type is detected on upload and stored in `ObjectHash`.
-- ETags are the content hash. `If-None-Match` returns 304.
-- Permissions are `id:permission` strings such as `anonymous:read` or `<userId>:write`,
-  stored in `ObjectHash.permissions`.
-- Reads stream from disk. Writes go to a temporary file, fsync, then rename, so a
-  partial upload is never visible.
-- Replacing an object overwrites the same id. Cover images, avatars and logos are single
-  objects per owner.
+- Rows in `objects` carry id, SHA-256, size and content type.
+- The file is named by the SHA-256, so identical uploads deduplicate.
+- `ETag` is the hash. `If-None-Match` returns 304.
+- Reads stream from disk. Writes go to a temp file, fsync, then rename.
+- Access is checked against the row that references the object (game cover, user
+  avatar), not by a per-object permission list.
 
-## 8. Library
+Release objects are separate: they live in the depot store described in section 9.
 
-A library source is a directory on disk. The provider decides whether a path is a
-version:
+## 8. Library and releases
 
-- **Filesystem provider**: the path is a directory tree. Files are walked, symlinks are
-  not followed out of the tree, and permission bits are recorded.
-- **Flat provider**: the path is a single archive. Phase 4 lists the files inside an
-  archive without extracting it. Zip is available in the Go standard library; 7z, rar
-  and iso need a fallback.
-- **Archive-backed versions** (zip, 7z, iso) are a later roadmap item. Directory
-  versions come first.
+A library is a directory on disk.
 
-Import produces a `GameVersion` row with a droplet manifest, a `fileList`, and
-optionally a `negativeFileList` for delta versions. A delta version references the
-version below it by `versionIndex`; the download manifest is assembled by applying file
-lists in ascending order, newest last.
+1. An admin adds a source with a name and path.
+2. A scan lists subdirectories that look like versions: a directory with files, no
+   symlinks escaping the source.
+3. The admin maps a directory to a game and a version name, selects a platform, and
+   starts a build.
+4. The build walks the tree, records relative path, size and mode, and chunks each file.
+5. The release is published atomically and the version row points at its digest.
 
-`createDownloadManifestDetails(versionId, previous, refresh)` keeps its behaviour:
-it returns `manifests` keyed by version id, `fileList` mapping each filename to the
-version that supplies it, `installSize` and `downloadSize`. When `previous` is given,
-chunks already present in the previous install are excluded and counted out of the
-download size.
+Symlinks are not followed outside the source root. Hidden files are included unless
+the source opts out. A tree with more than 200,000 files or 4 TiB is refused.
 
-## 9. Depot formats
+## 9. Depot format (`gamedepot-release` v1)
 
-Two formats coexist. Both are compatibility contracts with the desktop client.
+The only release format. It is defined here and nowhere else.
 
-### 9.1 Droplet v2 (library versions)
+### 9.1 Chunking
 
-Generated from a version directory by the server, consumed by `droplet-rs` in the
-desktop.
+- Fixed 4 MiB plaintext chunks (`4194304` bytes), last chunk shorter.
+- Chunk identity is the SHA-256 of the plaintext, lowercase hex.
+- Identical chunks deduplicate within a release.
 
-```text
-Manifest
-  version : string            "2"
-  size    : u64              total plaintext bytes
-  key     : [16]byte         random AES-128 key for the release
-  chunks  : map<uuid, Chunk>
+### 9.2 Encryption
 
-Chunk
-  checksum  : string         SHA-256 hex over the plaintext chunk
-  iv        : [16]byte       random per chunk
-  files     : [FileEntry]
+- One random 32-byte key per release, base64 in the manifest.
+- One random 12-byte nonce per object, base64 in the manifest.
+- AES-256-GCM. Ciphertext is `plaintext || 16-byte tag`.
+- Additional authenticated data is the ASCII string `gamedepot-release:v1:` followed by
+  the object's lowercase hex SHA-256. This binds a ciphertext to its identity.
+- Because object identity is the plaintext hash and the release key is unique, a
+  (key, nonce) pair is never reused with different plaintext. Reusing the same plaintext
+  reuses the same object and the same nonce, which is safe.
 
-FileEntry
-  filename    : string       relative, posix separators
-  start       : usize        offset inside the decrypted chunk
-  length      : usize        file length inside the chunk
-  permissions : u32          mode bits
-```
+### 9.3 Manifest
 
-Generation rules:
+Canonical JSON: UTF-8, object keys sorted lexicographically, no insignificant
+whitespace, no trailing newline in the hashed bytes.
 
-- Files are sorted by descending size, then packed into chunks of at most 64 MiB.
-- A chunk holds at most 512 file entries.
-- A file larger than 64 MiB is split across chunks; each slice becomes its own entry.
-- The chunk is encrypted as a whole with AES-128-CTR using the release key and the
-  chunk IV, with a **64-bit little-endian counter**. This differs from Go's
-  `cipher.NewCTR`, which uses a big-endian counter across the whole block. The Go
-  implementation is a small counter mode built on `cipher.Block.Encrypt`, and it is
-  tested against `libraries/droplet` output.
-- The checksum is computed over the plaintext, before encryption.
-
-Because the desktop decrypts with `ctr::Ctr64LE<Aes128>`, a byte-level mismatch would
-break every download. Equivalence tests are a phase 4 exit criterion.
-
-### 9.2 CAS (store ingestion, new releases)
-
-The content-addressed format used by ingestion, and the one new releases should
-prefer. Files are split into fixed 4 MiB chunks.
-
-```text
-Layout under ${DATA}/depot
-  objects/<first two hex>/<sha256>          raw chunk, immutable
-  manifests/<digest>.json                   canonical manifest, immutable
-
-Manifest (canonical JSON)
-  format     : "gamedepot-droplet"
-  version    : 1
-  files      : [{ path, size, sha256, mode, chunks: [{index, offset, size, sha256, object}] }]
-  chunkIndex : { <sha256>: { object, size } }
-  digest     : SHA-256 hex of the canonical JSON of everything above
+```json
+{
+  "format": "gamedepot-release",
+  "version": 1,
+  "chunkSize": 4194304,
+  "totalSize": 123456,
+  "key": "<base64, 32 bytes>",
+  "files": [
+    {
+      "path": "bin/game",
+      "size": 123456,
+      "sha256": "<hex>",
+      "mode": 493,
+      "chunks": [
+        { "sha256": "<hex>", "offset": 0, "size": 123456 }
+      ]
+    }
+  ],
+  "objects": {
+    "<hex>": { "size": 4194304, "nonce": "<base64, 12 bytes>" }
+  },
+  "digest": "<hex>"
+}
 ```
 
 Rules:
 
-- `digest` is computed over the canonical form with `digest` removed. Canonical means
-  sorted object keys, no insignificant whitespace, and no trailing newline in the
-  hashed bytes. Go needs its own canonical encoder, since `json-canonicalize` is a Node
-  package. The output is verified against manifests produced by the old server.
-- Paths are normalized to NFC, use `/`, and must be relative. Empty segments, `.`,
-  `..`, leading `/`, backslashes and NUL are rejected. Duplicate paths are rejected.
-- A chunk object is written to a temp file, fsynced, then renamed into place. If the
-  object already exists, the rename is skipped. A conflicting chunk with the same hash
-  but different size or path is a hard error.
-- Manifests are written once and never edited. The file name is the digest.
-- A tree with more than 200,000 files is refused rather than run indefinitely.
+- `path` is relative, uses `/`, is NFC normalized, and must not contain `..`, a leading
+  `/`, a backslash, NUL or an empty segment. Duplicates are rejected.
+- `mode` is `mode & 0o777`.
+- `chunks[].offset` is the offset inside the file, `size` is the plaintext length of
+  that slice.
+- `objects[].size` is the plaintext size. The stored file is `size + 16` bytes.
+- `digest` is the SHA-256 of the canonical JSON of the manifest with `digest` removed.
+- A manifest is written once and never edited.
 
-### 9.3 Serving
+### 9.4 Layout
 
-Chunk reads are `io.Copy` from an open file or from the chunk slice inside a droplet
-chunk file, with `http.ServeContent` for range and `If-Range` where the object is a
-plain file. For droplet chunks, the server decrypts only the requested file range: it
-seeks to the chunk offset, applies the counter at the right block, and streams the
-requested bytes. Range requests are honoured for CAS objects directly.
+```text
+${DATA}/depot
+  objects/<first two hex>/<sha256>     ciphertext, immutable
+  manifests/<digest>.json              canonical manifest, immutable
+```
 
-## 10. Certificate authority
+Writes use a temp file in the same directory, fsync, then rename. If the object exists,
+the write is skipped. A manifest is written last, after every object it references is
+present and fsynced.
 
-Pure Go `crypto/x509`, no external process.
+## 10. Depot serving
 
-- Root: self-signed, `CommonName=Drop Root Server`, `Organization=Drop`, is CA with
-  unconstrained basic constraints, key usages CRL sign, cert sign and digital signature.
-  Stored once under object key `ca` as `{priv, cert}` PEM.
-- Leaf: ECDSA P-384, issued per client id, `CommonName` set to the client name.
-- The server's own certificate (`server`, "Drop Server") is created at first boot so the
-  root always has at least one leaf.
-- Verification of a client request uses the leaf certificate in `Certificate`, checking
-  the signature over the JWT header and payload. Revocation is deleting the `Certificate`
-  row and the `Client` row, which invalidates both the certificate and the JWT path.
+- `GET /api/v1/depot/manifests/{digest}` returns the manifest JSON. The caller must have
+  access to the game that owns the release.
+- `GET /api/v1/depot/objects/{sha256}` returns ciphertext bytes. Access is checked by
+  looking up the object's release and the game.
+- No range support in v1. Objects are 4 MiB, so resume happens at object granularity,
+  which keeps the server simple and the client state small.
+- `GET /api/v1/depot/healthcheck` returns 200 when the depot root is readable.
+- Responses set `Cache-Control: public, max-age=31536000, immutable` for objects, since
+  the name is the hash. The dashboard is never cached.
 
-## 11. Tasks and notifications
+Deleting a release removes its manifest and any object no other manifest references.
+Reference counting walks the manifests that remain; it does not trust a counter column.
 
-Long operations (manifest generation, ingestion, publish, integrity checks) run in a task
-registry, not in the request goroutine.
+## 11. Tasks
 
-- A task has an id, a key that deduplicates concurrent duplicates, an owner, ACLs, a
-  status, a progress fraction and a log buffer.
-- Progress is published to an in-process hub. The desktop gets it over the existing
-  `/api/v1/task` WebSocket with the text protocol: `connect/<taskId>`, then JSON
-  messages, with `unauthenticated` sent on a missing credential.
-- The dashboard gets it by polling an HTML fragment every second with HTMX. No browser
-  WebSocket is added.
-- The notification feed at `/api/v1/notifications/ws` keeps its payload shape. It is
-  used by the desktop for admin announcements.
-- Registry state is process-local. Horizontal scaling would need a shared bus; that is
-  out of scope and documented as a known limit.
+Long operations run in a registry, not in the request goroutine: release build, publish,
+integrity check, cleanup, store ingestion.
 
-## 12. Dashboard rendering
+- A task has an id, kind, state, progress fraction, log buffer and owner.
+- Progress is kept in memory and mirrored to `tasks` for the list view.
+- The dashboard polls `/dashboard/_/tasks/{id}` every second with HTMX.
+- The desktop does not need task progress in v1; its downloads are client-side.
+- Cancellation is a context cancel propagated to the worker.
+- One task per kind and target at a time; a duplicate request returns the running task.
 
-- `html/template` with a layout, a navigation partial, and page templates.
-- HTMX is vendored as a single minified file under `backend/web/static`; no CDN at
-  runtime.
-- Tailwind is compiled ahead of time with the standalone CLI into
-  `backend/web/static/app.css` and embedded with `go:embed`. The server never runs
-  Node.
+## 12. Dashboard
+
+- `html/template` with a layout, navigation and page templates.
+- HTMX vendored under `backend/web/static/htmx.min.js`. No CDN at runtime.
+- Tailwind compiled ahead of time with the standalone CLI into
+  `backend/web/static/app.css` and embedded with `go:embed`.
 - Design tokens follow shadcn's vocabulary (`background`, `foreground`, `card`,
-  `border`, `muted`, `primary`, `destructive`), so the dashboard and the desktop client
-  look like one product.
-- Forms use POST plus redirect (PRG), with CSRF tokens. Inline actions return fragments.
-- Errors render a page with the request id, not a stack trace. Logs carry the same id.
+  `border`, `muted`, `primary`, `destructive`), matching the desktop client.
+- Forms use POST plus redirect. Inline actions return fragments.
+- Errors render a page with the request id. Logs carry the same id.
 
 ## 13. Desktop client
 
-The Rust core is kept. The UI moves off Nuxt.
+Tauri 2 with a Rust core, written for this project.
 
-- Vue 3, Vite, TypeScript, `vue-router`.
-- `unplugin-vue-router` keeps file-based routing over `pages/`.
-- `unplugin-auto-import` and `unplugin-vue-components` keep the Nuxt-style auto-imports.
-- `NuxtLink` is replaced by a shim that renders `RouterLink`.
-- `useState` becomes VueUse `createGlobalState` stores.
-- shadcn-vue on Reka UI supplies components; `@heroicons/vue` stays until a later icon
-  pass.
-- Tailwind v4, with the existing `ink` and `accent` scales mapped to shadcn variables.
-  Both themes are kept, since the client ships a theme picker.
-- Tauri commands and the Rust modules (`client`, `download_manager`, `games`, `importer`,
-  `process`, `remote`, `cloud_saves`, `database`, `tailscale`) are unchanged in phase 1.
-
-`desktop/main` currently uses Nuxt APIs in 29 of its 50 files, but only lightly: 9
-`definePageMeta`, 20 `NuxtLink`, 12 `useState`, and a handful of router and composable
-calls. That is why the migration is a set of shims rather than a rewrite.
+- UI: Vue 3, Vite, TypeScript, vue-router, shadcn-vue on Reka UI, Tailwind v4.
+- Rust modules:
+  - `api`: HTTP client, token injection, error mapping.
+  - `auth`: pairing flow, keyring storage, sign-out.
+  - `download`: worker pool, per-object fetch, verify, decrypt, temp write, resume.
+  - `install`: assemble files, modes, atomic rename, local install state in SQLite.
+  - `launch`: spawn, environment, working directory, exit status.
+  - `settings`: server URL, download directory, concurrency, theme.
+- Token storage uses the OS keyring. The SQLite database holds install state only, never
+  credentials.
+- Download concurrency defaults to four objects and is configurable.
+- A partial install is never launched: the version is marked ready only after every file
+  verifies.
 
 ## 14. Configuration
 
-Environment only, no config file. Defaults are chosen so a development instance starts
-without a `.env`.
+Environment only. Defaults let a development instance start without a `.env`.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `DATABASE_URL` | required | PostgreSQL connection string |
 | `PORT` | `4000` | HTTP listen port |
-| `EXTERNAL_URL` | `http://localhost:4000` | Public origin, used for depot URL and links |
+| `EXTERNAL_URL` | `http://localhost:4000` | Public origin, used for links and cookies |
 | `LIBRARY` | `./.data/library` | Library volume |
-| `DATA` | `./.data/data` | Objects, depot, certificates |
-| `GAMEDEPOT_CREDENTIAL_KEY` | required for store features | 32 byte key sealing stored credentials |
-| `GAMEDEPOT_STORE` | `false` | Enables store ingestion surfaces |
-| `METADATA_TIMEOUT` | `5000` | Metadata provider timeout in ms |
-| `CHECK_FOR_UPDATES` | `true` in production | Update check |
+| `DATA` | `./.data/data` | Objects, depot, manifests |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
-| `OIDC_*` | unset | Only if OIDC returns in phase 7 |
+| `GAMEDEPOT_AUTO_MIGRATE` | `true` in development | Apply migrations on boot |
+| `GAMEDEPOT_CREDENTIAL_KEY` | unset | 32-byte key for store credentials, phase 7 |
 
-Validation happens once at boot. A missing `DATABASE_URL` or an unwritable `DATA`
-directory is fatal with a specific message, not a panic. `EXTERNAL_URL` is normalized
-(trailing slash removed, scheme required) so string concatenation for the depot URL is
-safe.
+Validation happens once at boot. A missing `DATABASE_URL`, an unwritable `DATA`
+directory or a malformed `EXTERNAL_URL` is fatal with a specific message.
 
-## 15. Error model
+## 15. Errors
 
-- JSON handlers return `{"statusCode": n, "statusMessage": "...", "message": "..."}`
-  for any 4xx, matching the shape the desktop already parses.
-- Validation failures are 400 with a field summary. Missing authentication is 401.
-  Failed authorization is 403. Missing rows are 404. Conflicts are 409.
-- Internal errors log with the request id and the stack-equivalent fields, and return a
-  generic message. No database error text reaches a client.
-- Dashboard handlers render an error template with the same status codes, plus a flash
-  message for form-level failures.
+- JSON errors: `{"error":{"code":"not_found","message":"Game not found"}}`.
+- Status codes: 400 malformed, 401 unauthenticated, 403 forbidden, 404 missing,
+  409 conflict, 422 validation, 429 rate limited, 500 internal.
+- Validation errors include a `fields` object keyed by field name.
+- Internal errors log detail with the request id and return a generic message.
+- Dashboard errors render a template with the status code and a flash message.
 
 ## 16. Concurrency and limits
 
-- pgx pool sized from `GOMAXPROCS`, with a floor and a ceiling, and a statement timeout.
-- Manifest generation uses a worker pool bounded by CPU count and disk throughput. Each
-  chunk is hashed and encrypted independently.
-- Ingest jobs are serialized per connection and per game through task keys, so a double
-  click cannot start two downloads of the same build.
-- Uploads stream to disk with a size cap. No request body is fully buffered in memory.
-- WebSocket connections have read and write deadlines and a ping interval.
-- Every long loop checks `context.Context` for cancellation, including chunking, publish
-  and ingestion.
+- pgx pool sized from `GOMAXPROCS`, with a floor, a ceiling and a statement timeout.
+- Release builds use a worker pool bounded by CPU count and disk throughput.
+- Uploads and object writes stream to disk with a size cap; no request body is fully
+  buffered.
+- Every long loop takes a `context.Context` and checks it.
+- HTTP servers set read, write and idle timeouts.
+- Download tokens are validated before any file is opened.
 
 ## 17. Testing
 
-- **Unit**: format codecs, canonical JSON, path safety, ACL resolution, config parsing.
-- **Format equivalence**: droplet v2 manifests and CAS manifests produced by Go are
-  compared byte for byte with fixtures generated by the old implementation. This is the
-  highest-value test in the project, because a mismatch breaks clients silently.
-- **Handler**: table tests against a seeded PostgreSQL, using a compose service or
-  testcontainers.
-- **Contract**: replay the desktop request set against an upstream server and the Go
-  server, diff the responses. Run in phase 5 and nightly afterwards.
-- **End to end**: setup, invite, sign in, pair, import, download, play, save.
-- **No network in unit tests.** Provider adapters take an injected HTTP client and are
-  tested against recorded responses.
+- Unit tests for chunking, AES-GCM framing, canonical JSON, path safety, tokens,
+  sessions and config.
+- Golden fixtures for the manifest encoder and decoder, including a manifest with
+  duplicate chunks and an empty file.
+- Handler tests against a seeded PostgreSQL in compose or testcontainers.
+- End to end: setup, invite, sign in, pair, build a release, download, install, launch,
+  playtime.
+- No network in unit tests. Provider adapters take an injected HTTP client and use
+  recorded responses.
 
 ## 18. Deployment
 
-- One image: the Go binary, embedded dashboard assets, the baseline SQL.
-- Two volumes: `${LIBRARY}` and `${DATA}`. Both must be backed up together, because
-  depot manifests reference objects by hash.
-- PostgreSQL is external or a compose service, not embedded.
-- The process handles `SIGTERM` by stopping listeners, waiting for in-flight requests
-  with a bounded grace period, then closing the pool.
-- Health: `GET /api/v1/depot/healthcheck` for liveness, plus a readiness check that
-  pings the database.
-- Logs are structured JSON on stdout, with a human-readable mode for development.
+- One image: Go binary, embedded dashboard assets, migrations.
+- Two volumes: `LIBRARY` and `DATA`. Back them up together; manifests reference objects
+  by hash.
+- PostgreSQL external or a compose service.
+- `SIGTERM` stops listeners, waits for in-flight requests with a bounded grace period,
+  then closes the pool.
+- Liveness: `/api/v1/health`. Readiness: health plus a database ping.
+- Logs are JSON on stdout by default, human-readable in development.
 
 ## 19. Known limits
 
-- Task and notification state is process-local; the server is single instance by design.
-- Archive-backed library versions are not in the first milestone.
-- Ubisoft and EA adapters depend on undocumented endpoints; they are the least verifiable
-  part of the port and are tested with recorded traffic only.
-- The CAS canonical encoder is ours. If it ever disagrees with the Node implementation,
-  manifest digests change, so the fixtures are checked in and treated as goldens.
+- Single instance only. Tasks and progress are process-local.
+- No range requests in v1; object granularity is the resume unit.
+- Store ingestion and cloud saves arrive in phase 7.
+- Windows and Linux are the first desktop targets. macOS is not tested.
