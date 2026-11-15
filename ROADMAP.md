@@ -175,3 +175,50 @@ These were removed from the rewrite and are not planned:
 Archive-backed library versions (zip, 7z, iso) are a possible later item. Phase 4
 ships directory versions first, because the Rust backend treated archives as a separate
 backend and the Go port can add it without changing the manifest format.
+
+## Future ideas
+
+Recorded so they are not lost. These are not phases, have no exit criteria, and can
+change before anyone builds them.
+
+### Cache node
+
+A small node that sits between clients and the main GameDepot server, so LAN parties
+and offline setups pull bytes locally instead of over the WAN.
+
+**Milestone 1: proxy node (plumbing, low risk)**
+
+- A small image, either by extending the repo-root Dockerfile and compose file or by
+  running a parallel service.
+- Manifest and metadata requests are always forwarded live to upstream. They are small,
+  and forwarding keeps versions in sync automatically.
+- Content and blob requests are forwarded upstream. No caching yet.
+- Auth tokens are validated against upstream, so the node cannot act as an open proxy.
+- The client gets a cache URL setting that overrides the server URL.
+
+**Milestone 2: blob cache**
+
+- Content-addressed cache on the node's volume. A cached blob cannot be stale because
+  its name is its hash. Eviction means dropping a file, with no invalidation logic.
+- LRU eviction against a disk quota.
+- Serve on miss, proxying and filling the cache, or cache-only mode, serving only what
+  is already resident.
+
+**Milestone 3: admin control of what is cached**
+
+- Dashboard action to pre-cache a game or version to node X, so the cache fills over the
+  home connection before the LAN party.
+- Pin games so they are never evicted. Everything else stays LRU.
+- Node status view: disk usage, what is resident, cache hit and miss statistics.
+
+**Placement:** before or alongside user libraries, not before the depot exists. The
+Epic `appName` correctness fix has landed in the fork parent (required by the ingest
+route, sent in the launcher assets query, and used in the manifest download URL at
+`/appName/<name>/manifest/`), so it no longer gates this work.
+
+**Design decision to settle first:** per-chunk caching or whole-file caching. Per-chunk
+is what makes pre-caching and bandwidth sharing cheap, but it couples the cache to the
+depot download protocol. Whole-file is simpler and independent, but it stores and moves
+more bytes than a client may need. Current lean: per-chunk, since the protocol already
+streams in chunks. Decide before the ingest manifest format is frozen, because the cache
+key design affects it.
