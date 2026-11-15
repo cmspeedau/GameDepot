@@ -452,5 +452,6 @@ directory or a malformed `EXTERNAL_URL` is fatal with a specific message.
 
 - Single instance only. Tasks and progress are process-local.
 - No range requests in v1; object granularity is the resume unit.
+- v1 launches native processes only. Emulator and compatibility-tool helpers are v2.
 - Store ingestion and cloud saves arrive in phase 7.
 - Windows and Linux are the first desktop targets. macOS is not tested.

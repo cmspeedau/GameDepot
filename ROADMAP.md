@@ -122,10 +122,24 @@ backup.
 - [ ] Store ingestion: GOG first, then Epic, with an encrypted connection store.
 - [ ] Metadata providers with a manual fallback.
 - [ ] Cache node for LAN and offline use (see below).
-- [ ] Emulator and compatibility-tool launch helpers.
 
 Exit criteria: a store title ingests without a local copy, and a save round-trips
 between two devices.
+
+## Version 2
+
+Deliberately deferred past the first release. These are scoped for v2, not the v1
+phases above.
+
+- [ ] Emulator and compatibility-tool launch helpers. v1 launches native processes
+      only; emulator selection, prefixes and per-tool configuration land in v2.
+- [ ] Move the release chunk size from 4 MiB to 1 MiB (or content-defined chunking),
+      per the revisit trigger in
+      [`docs/adr/0008-chunk-size.md`](docs/adr/0008-chunk-size.md). This is a
+      `gamedepot-release` version bump with a migration note for existing objects.
+
+Exit criteria for v2: a title launches through a chosen emulator or compatibility tool,
+and new releases build at the smaller chunk size with cross-version reuse measurable.
 
 ## Future ideas
 
