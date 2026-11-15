@@ -1,0 +1,249 @@
+package server
+
+import (
+	"html/template"
+	"io/fs"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/cmspeedau/gamedepot/internal/auth"
+	"github.com/cmspeedau/gamedepot/internal/config"
+	db "github.com/cmspeedau/gamedepot/internal/database/db"
+	"github.com/cmspeedau/gamedepot/web"
+)
+
+type Server struct {
+	cfg       config.Config
+	pool      *pgxpool.Pool
+	db        *db.Queries
+	sessions  *auth.SessionManager
+	templates *template.Template
+	static    fs.FS
+}
+
+func New(cfg config.Config, pool *pgxpool.Pool) *Server {
+	s := &Server{cfg: cfg, pool: pool, db: db.New(pool), sessions: auth.NewSessionManager(pool)}
+
+	tmpl, err := template.ParseFS(web.Assets, "templates/*.html")
+	if err != nil {
+		panic(err)
+	}
+	s.templates = tmpl
+
+	sub, err := fs.Sub(web.Assets, "static")
+	if err != nil {
+		panic(err)
+	}
+	s.static = sub
+
+	return s
+}
+
+func (s *Server) Handler() http.Handler {
+	gin.SetMode(gin.ReleaseMode)
+	r := gin.New()
+	r.Use(gin.Recovery())
+
+	// Static assets.
+	r.StaticFS("/static", http.FS(s.static))
+
+	// Health.
+	r.GET("/api/v1/health", s.handleHealth)
+
+	// Setup and auth.
+	r.GET("/setup", s.handleSetupPage)
+	r.POST("/setup", s.handleSetupSubmit)
+	r.GET("/signin", s.handleSigninPage)
+	r.POST("/signin", s.handleSigninSubmit)
+	r.POST("/signout", s.handleSignout)
+
+	// Dashboard (placeholder, requires session in later phases).
+	r.GET("/dashboard", s.requireSession(s.handleDashboard))
+
+	// Dashboard fragments placeholder.
+	r.GET("/dashboard/_/ping", s.requireSession(func(c *gin.Context) { c.String(200, "pong") }))
+
+	return r
+}
+
+func (s *Server) handleHealth(c *gin.Context) {
+	if err := s.pool.Ping(c.Request.Context()); err != nil {
+		c.JSON(503, gin.H{"error": gin.H{"code": "unavailable", "message": "database unreachable"}})
+		return
+	}
+	c.Status(204)
+}
+
+func (s *Server) render(c *gin.Context, name string, data any) {
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	if err := s.templates.ExecuteTemplate(c.Writer, name, data); err != nil {
+		slogError(c, err)
+	}
+}
+
+func (s *Server) requireSession(next gin.HandlerFunc) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token, err := c.Cookie(auth.SessionCookie)
+		if err != nil || token == "" {
+			c.Redirect(302, "/signin")
+			c.Abort()
+			return
+		}
+		sess, err := s.sessions.Get(c.Request.Context(), token)
+		if err != nil {
+			auth.ClearSessionCookie(c.Writer)
+			c.Redirect(302, "/signin")
+			c.Abort()
+			return
+		}
+		if sess.ExpiresAt.Before(time.Now()) {
+			_ = s.sessions.Delete(c.Request.Context(), token)
+			auth.ClearSessionCookie(c.Writer)
+			c.Redirect(302, "/signin")
+			c.Abort()
+			return
+		}
+		c.Set("session", sess)
+		c.Set("token", token)
+		next(c)
+	}
+}
+
+func (s *Server) handleSetupPage(c *gin.Context) {
+	count, err := s.db.CountUsers(c.Request.Context())
+	if err != nil {
+		c.String(500, "database error")
+		return
+	}
+	if count > 0 {
+		c.Redirect(302, "/signin")
+		return
+	}
+	s.render(c, "setup.html", gin.H{"Title": "Setup"})
+}
+
+func (s *Server) handleSetupSubmit(c *gin.Context) {
+	count, err := s.db.CountUsers(c.Request.Context())
+	if err != nil {
+		c.String(500, "database error")
+		return
+	}
+	if count > 0 {
+		c.Redirect(302, "/signin")
+		return
+	}
+
+	username := strings.TrimSpace(c.PostForm("username"))
+	password := c.PostForm("password")
+	if username == "" || len(password) < 8 {
+		s.render(c, "setup.html", gin.H{"Title": "Setup", "Error": "Username required and password at least 8 characters."})
+		return
+	}
+
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		c.String(500, "hash error")
+		return
+	}
+
+	id := uuid.New()
+	_, err = s.db.CreateUser(c.Request.Context(), db.CreateUserParams{
+		ID:           pgtype.UUID{Bytes: id, Valid: true},
+		Username:     username,
+		DisplayName:  username,
+		PasswordHash: hash,
+		Admin:        true,
+	})
+	if err != nil {
+		s.render(c, "setup.html", gin.H{"Title": "Setup", "Error": "Could not create admin. Username may be taken."})
+		return
+	}
+
+	// consume setup token setting
+	_ = s.db.DeleteSetting(c.Request.Context(), "setup_token")
+
+	token, err := s.sessions.Create(c.Request.Context(), id, true, c.Request.UserAgent())
+	if err != nil {
+		c.String(500, "session error")
+		return
+	}
+	auth.SetSessionCookie(c.Writer, token, auth.SecureCookie(s.cfg.ExternalURL), int(auth.SessionLifetime.Seconds()))
+	c.Redirect(302, "/dashboard")
+}
+
+func (s *Server) handleSigninPage(c *gin.Context) {
+	count, err := s.db.CountUsers(c.Request.Context())
+	if err != nil {
+		c.String(500, "database error")
+		return
+	}
+	if count == 0 {
+		c.Redirect(302, "/setup")
+		return
+	}
+	s.render(c, "signin.html", gin.H{"Title": "Sign in"})
+}
+
+func (s *Server) handleSigninSubmit(c *gin.Context) {
+	username := strings.TrimSpace(c.PostForm("username"))
+	password := c.PostForm("password")
+	remember := c.PostForm("remember") == "on"
+
+	user, err := s.db.GetUserByUsername(c.Request.Context(), username)
+	if err != nil {
+		s.render(c, "signin.html", gin.H{"Title": "Sign in", "Error": "Invalid username or password."})
+		return
+	}
+	if user.Disabled {
+		s.render(c, "signin.html", gin.H{"Title": "Sign in", "Error": "Account disabled."})
+		return
+	}
+	ok, err := auth.VerifyPassword(password, user.PasswordHash)
+	if err != nil || !ok {
+		s.render(c, "signin.html", gin.H{"Title": "Sign in", "Error": "Invalid username or password."})
+		return
+	}
+
+	token, err := s.sessions.Create(c.Request.Context(), user.ID.Bytes, remember, c.Request.UserAgent())
+	if err != nil {
+		c.String(500, "session error")
+		return
+	}
+	auth.SetSessionCookie(c.Writer, token, auth.SecureCookie(s.cfg.ExternalURL), int(auth.SessionLifetime.Seconds()))
+	if remember {
+		auth.SetSessionCookie(c.Writer, token, auth.SecureCookie(s.cfg.ExternalURL), int(auth.RememberLifetime.Seconds()))
+	}
+	c.Redirect(302, "/dashboard")
+}
+
+func (s *Server) handleSignout(c *gin.Context) {
+	if token, err := c.Cookie(auth.SessionCookie); err == nil && token != "" {
+		_ = s.sessions.Delete(c.Request.Context(), token)
+	}
+	auth.ClearSessionCookie(c.Writer)
+	c.Redirect(302, "/signin")
+}
+
+func (s *Server) handleDashboard(c *gin.Context) {
+	sess := c.MustGet("session").(*auth.Session)
+	user, err := s.db.GetUserByID(c.Request.Context(), pgtype.UUID{Bytes: sess.UserID, Valid: true})
+	if err != nil {
+		c.String(500, "user lookup failed")
+		return
+	}
+	s.render(c, "dashboard.html", gin.H{
+		"Title":    "Dashboard",
+		"Username": user.Username,
+	})
+}
+
+func slogError(c *gin.Context, err error) {
+	_ = c
+	_ = err
+}

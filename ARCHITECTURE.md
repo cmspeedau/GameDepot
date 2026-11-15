@@ -338,6 +338,8 @@ present and fsynced.
   looking up the object's release and the game.
 - No range support in v1. Objects are 4 MiB, so resume happens at object granularity,
   which keeps the server simple and the client state small.
+- Object reads stream from disk with `io.Copy` and never buffer a whole object in
+  memory.
 - `GET /api/v1/depot/healthcheck` returns 200 when the depot root is readable.
 - Responses set `Cache-Control: public, max-age=31536000, immutable` for objects, since
   the name is the hash. The dashboard is never cached.
