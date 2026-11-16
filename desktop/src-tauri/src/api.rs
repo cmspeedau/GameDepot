@@ -195,6 +195,7 @@ pub trait ApiClient: Send + Sync {
 }
 
 /// reqwest-backed implementation.
+#[derive(Clone)]
 pub struct HttpApiClient {
     http: reqwest::Client,
     base_url: String,
