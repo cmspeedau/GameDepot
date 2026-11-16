@@ -119,8 +119,132 @@ pub fn read_archive(bytes: &[u8]) -> Result<Vec<(String, u32, Vec<u8>)>, String>
     Ok(out)
 }
 
+/// A save root is a directory on the user's machine (after template expansion) that
+/// holds a game's saves. Multiple roots are merged into one save set; when there is
+/// more than one, each file's key is prefixed with the root's label so the two sides
+/// can place it back where it came from.
+#[derive(Debug, Clone)]
+pub struct SaveRoot {
+    pub label: String,
+    pub base: std::path::PathBuf,
+}
+
+/// Walk every root and collect its files. Symlinks are not followed, so a hostile
+/// save directory cannot pull files from outside the root. Returns entries sorted by
+/// key, which keeps `content_hash` reproducible.
+pub fn collect_files(roots: &[SaveRoot]) -> Result<Vec<FileEntry>, String> {
+    let multi = roots.len() > 1;
+    let mut out = Vec::new();
+    for root in roots {
+        walk_root(root, multi, &mut out)?;
+    }
+    out.sort_by(|a, b| a.key.cmp(&b.key));
+    Ok(out)
+}
+
+fn walk_root(root: &SaveRoot, multi: bool, out: &mut Vec<FileEntry>) -> Result<(), String> {
+    let base = &root.base;
+    if !base.is_dir() {
+        return Err(format!("save root is not a directory: {}", base.display()));
+    }
+    let mut stack: Vec<(std::path::PathBuf, String)> = vec![(base.clone(), String::new())];
+    while let Some((dir, rel)) = stack.pop() {
+        let rd = std::fs::read_dir(&dir).map_err(|e| format!("read_dir {}: {e}", dir.display()))?;
+        for entry in rd {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let ft = entry.file_type().map_err(|e| e.to_string())?;
+            if ft.is_symlink() {
+                continue // never follow symlinks
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            let child_rel = if rel.is_empty() { name.clone() } else { format!("{rel}/{name}") };
+            let path = entry.path();
+            if ft.is_dir() {
+                stack.push((path, child_rel));
+            } else if ft.is_file() {
+                let key = if multi {
+                    format!("{}/{}", root.label, child_rel)
+                } else {
+                    child_rel
+                };
+                out.push(entry_from_file(&key, &path)?);
+            }
+        }
+    }
+    Ok(())
+}
+
+
 #[cfg(test)]
-mod tests {
+mod collect_tests {
+    use super::*;
+    use std::fs;
+    use std::io::Write;
+
+    #[test]
+    fn collects_files_with_relative_keys() {
+        let dir = std::env::temp_dir().join(format!("gd-collect-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("sub")).unwrap();
+        fs::write(dir.join("a.txt"), b"hello").unwrap();
+        fs::write(dir.join("sub/b.txt"), b"world").unwrap();
+        // symlink must be skipped
+        #[cfg(unix)]
+        let _ = std::os::unix::fs::symlink("/etc/hostname", dir.join("link.txt"));
+
+        let roots = vec![SaveRoot { label: "r".into(), base: dir.clone() }];
+        let entries = collect_files(&roots).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].key, "a.txt");
+        assert_eq!(entries[1].key, "sub/b.txt");
+        assert_eq!(entries[0].size, 5);
+        // content hash stable
+        let h1 = content_hash(&entries);
+        let h2 = content_hash(&entries);
+        assert_eq!(h1, h2);
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn multiple_roots_namespace_keys() {
+        let d1 = std::env::temp_dir().join(format!("gd-c1-{}", std::process::id()));
+        let d2 = std::env::temp_dir().join(format!("gd-c2-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d1);
+        let _ = fs::remove_dir_all(&d2);
+        fs::create_dir_all(&d1).unwrap();
+        fs::create_dir_all(&d2).unwrap();
+        fs::write(d1.join("x.txt"), b"1").unwrap();
+        fs::write(d2.join("x.txt"), b"2").unwrap();
+
+        let roots = vec![
+            SaveRoot { label: "rootA".into(), base: d1.clone() },
+            SaveRoot { label: "rootB".into(), base: d2.clone() },
+        ];
+        let entries = collect_files(&roots).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert!(entries.iter().any(|e| e.key == "rootA/x.txt"));
+        assert!(entries.iter().any(|e| e.key == "rootB/x.txt"));
+        // both files have same size but different content hashes
+        let a = entries.iter().find(|e| e.key == "rootA/x.txt").unwrap();
+        let b = entries.iter().find(|e| e.key == "rootB/x.txt").unwrap();
+        assert_ne!(a.sha256, b.sha256);
+        fs::remove_dir_all(&d1).ok();
+        fs::remove_dir_all(&d2).ok();
+    }
+
+    #[test]
+    fn missing_root_is_an_error() {
+        let roots = vec![SaveRoot { label: "x".into(), base: std::path::PathBuf::from("/no/such/dir/xyz") }];
+        assert!(collect_files(&roots).is_err());
+    }
+
+    fn hex_encode(b: &[u8]) -> String {
+        const H: &[u8] = b"0123456789abcdef";
+        let mut out = String::with_capacity(b.len() * 2);
+        for &x in b { out.push(H[(x >> 4) as usize] as char); out.push(H[(x & 15) as usize] as char); }
+        out
+    }
+}
     use super::*;
     use std::io::Write;
 
@@ -203,4 +327,4 @@ mod tests {
         assert_eq!(e.sha256, hex::encode(Sha256::digest(b"hello")));
         std::fs::remove_dir_all(&dir).ok();
     }
-}
+

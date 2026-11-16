@@ -144,10 +144,10 @@ backup.
       is complete and smoke-tested against a live server (push with optimistic
       concurrency, idempotent no-op, stale-base conflict 409, per-version download,
       restore, pin, delete guards, retention window, and the save-path manifest read).
-      Desktop: `saves.rs` computes the identical `contentHash` (cross-language golden),
-      expands root templates, and round-trips a `tar.zstd` archive; `api.rs` exposes the
-      full save API; `save_sync.rs` drives the 4-way noop/push/pull/conflict flow with a
-      fake client. Remaining: the root-directory walker, command wiring, and the UI.
+      Desktop: contentHash matches Go byte-for-byte (golden test), template expansion,
+      tar.zstd round-trip, and a root-directory walker that collects files with relative
+      keys (single and multi-root, symlink-safe) are tested. Remaining: save-sync
+      command wiring over the API and the UI.
 - [ ] Store ingestion: GOG first, then Epic, with an encrypted connection store.
 - [ ] Metadata providers with a manual fallback.
 - [ ] Cache node for LAN and offline use (see below).
