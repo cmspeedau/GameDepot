@@ -149,10 +149,21 @@ Full game record.
 ### `GET /api/v1/releases/{versionId}`
 
 ```json
-{ "digest": "<hex>", "totalSize": 123456, "manifestUrl": "/api/v1/depot/manifests/<digest>" }
+{
+  "digest": "<hex>",
+  "totalSize": 123456,
+  "manifestUrl": "/api/v1/depot/manifests/<digest>",
+  "launches": [
+    { "id": "<uuid>", "name": "Play", "platform": "linux",
+      "executable": "bin/game", "arguments": ["--launch"], "workingDir": "" }
+  ]
+}
 ```
 
-The manifest URL is a convenience; the client may build it from the digest.
+The manifest URL is a convenience; the client may build it from the digest. `launches`
+are the executable options for the version: `executable` is relative to the install
+root and must stay inside it; `arguments` are passed as an array (never through a
+shell). See `GET /api/v1/games/{id}/versions` for the version list that precedes this.
 
 ## Depot
 
