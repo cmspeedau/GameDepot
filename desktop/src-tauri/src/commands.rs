@@ -96,6 +96,19 @@ pub async fn install_version(
 }
 
 #[tauri::command]
+pub async fn launch_game(
+    executable: String,
+    args: Vec<String>,
+    working_dir: Option<String>,
+    env: std::collections::BTreeMap<String, String>,
+) -> Result<u32, String> {
+    let mut spec = crate::launch::LaunchSpec::new(executable);
+    for a in args { spec = spec.arg(a); }
+    if let Some(d) = working_dir { spec = spec.cwd(d); }
+    for (k, v) in env { spec = spec.env(k, v); }
+    crate::launch::spawn_detached(&spec).map_err(|e| e.to_string())
+}
+#[tauri::command]
 pub async fn playtime_report(
     state: State<'_, AppState>,
     game_id: String,
@@ -106,6 +119,17 @@ pub async fn playtime_report(
         .post_playtime(&game_id, seconds)
         .await
         .map_err(e)
+}
+
+#[tauri::command]
+pub async fn playtime_start(state: State<'_, AppState>, game_id: String) -> Result<(), String> {
+    state.playtime_start(&game_id);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn playtime_stop(state: State<'_, AppState>, game_id: String) -> Result<u64, String> {
+    Ok(state.playtime_stop(&game_id))
 }
 
 #[derive(serde::Serialize)]
