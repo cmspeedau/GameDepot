@@ -145,8 +145,9 @@ backup.
       concurrency, idempotent no-op, stale-base conflict 409, per-version download,
       restore, pin, delete guards, retention window, and the save-path manifest read).
       Desktop: `saves.rs` computes the identical `contentHash` (cross-language golden),
-      expands root templates, and round-trips a `tar.zstd` archive. The root-directory
-      walker, save-sync orchestration over the API, and the UI remain.
+      expands root templates, and round-trips a `tar.zstd` archive; `api.rs` exposes the
+      full save API; `save_sync.rs` drives the 4-way noop/push/pull/conflict flow with a
+      fake client. Remaining: the root-directory walker, command wiring, and the UI.
 - [ ] Store ingestion: GOG first, then Epic, with an encrypted connection store.
 - [ ] Metadata providers with a manual fallback.
 - [ ] Cache node for LAN and offline use (see below).

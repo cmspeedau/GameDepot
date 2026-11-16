@@ -82,7 +82,7 @@ pub fn client_for(base_url: &str, store: &dyn KeyStore) -> Result<crate::api::Ht
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::{LibraryItem, Me, ReleaseInfo};
+    use crate::api::{LibraryItem, Me, ReleaseInfo, SaveManifest, SaveSlot, SaveVersion, PushOutcome};
     use async_trait::async_trait;
     use std::sync::Mutex;
 
@@ -136,6 +136,14 @@ mod tests {
         async fn post_playtime(&self, _g: &str, _s: u64) -> Result<(), ApiError> {
             unreachable!()
         }
+        async fn list_saves(&self, _g: Option<&str>) -> Result<Vec<SaveSlot>, ApiError> { unreachable!() }
+        async fn save_manifest(&self, _g: &str) -> Result<SaveManifest, ApiError> { unreachable!() }
+        async fn push_save(&self, _g: &str, _s: i32, _h: &str, _b: i32, _f: u32, _a: &[u8]) -> Result<PushOutcome, ApiError> { unreachable!() }
+        async fn download_save(&self, _g: &str, _s: i32, _seq: Option<i32>) -> Result<Vec<u8>, ApiError> { unreachable!() }
+        async fn list_save_versions(&self, _g: &str, _s: i32) -> Result<Vec<SaveVersion>, ApiError> { unreachable!() }
+        async fn restore_save(&self, _g: &str, _s: i32, _v: &str) -> Result<SaveVersion, ApiError> { unreachable!() }
+        async fn pin_save(&self, _g: &str, _s: i32, _v: &str, _p: bool) -> Result<(), ApiError> { unreachable!() }
+        async fn delete_save_version(&self, _g: &str, _s: i32, _v: &str) -> Result<(), ApiError> { unreachable!() }
     }
 
     #[tokio::test]
