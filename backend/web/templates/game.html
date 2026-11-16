@@ -46,6 +46,38 @@
       <input name="platform" placeholder="platform" class="rounded border border-zinc-700 bg-zinc-900 px-3 py-2">
       <button class="rounded bg-blue-600 px-4 py-2 text-sm font-medium">Add version</button>
     </form>
+    <h2 class="text-lg mt-8 mb-2">Launch options</h2>
+    <p class="text-sm text-zinc-400 mb-3">Executables are paths inside the installed files; arguments are space-separated and passed to execve directly, never through a shell.</p>
+    {{range $vl := .VersionLaunches}}
+      <div class="mb-4">
+        <h3 class="text-sm font-medium mb-1">{{$vl.Version.Name}} ({{$vl.Version.Platform}})</h3>
+        {{if $vl.Launches}}
+        <ul class="text-sm mb-2">
+          {{range $vl.Launches}}
+          <li class="flex items-center gap-3 py-1">
+            <span class="text-zinc-200">{{.Name}}</span>
+            <span class="text-zinc-500 font-mono">{{.Platform}}: {{.Executable}}{{with .Arguments}} {{.}}{{end}}</span>
+            <form method="post" action="/dashboard/launches/{{uuid .ID}}/delete" class="ml-auto">
+              <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+              <button class="text-red-400 hover:underline text-xs">remove</button>
+            </form>
+          </li>
+          {{end}}
+        </ul>
+        {{else}}
+        <p class="text-xs text-zinc-500 mb-2">No launch options yet.</p>
+        {{end}}
+        <form method="post" action="/dashboard/versions/{{uuid $vl.Version.ID}}/launches" class="flex flex-wrap gap-2">
+          <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+          <input name="name" placeholder="label" class="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm">
+          <input name="platform" placeholder="linux" value="{{$vl.Version.Platform}}" class="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm w-20">
+          <input name="executable" placeholder="Game.sh" class="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm flex-1">
+          <input name="arguments" placeholder="--args" class="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm">
+          <input name="working_dir" placeholder="work dir" class="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm">
+          <button class="rounded bg-blue-600 px-4 py-2 text-sm font-medium">Add launch</button>
+        </form>
+      </div>
+    {{end}}
     <form method="post" action="/dashboard/games/{{uuid .Game.ID}}/delete" class="mt-8">
       <input type="hidden" name="_csrf" value="{{.CSRF}}">
       <button class="text-red-400 hover:underline text-sm">Delete game</button>

@@ -165,6 +165,13 @@ type PairingCode struct {
 	ClientID   pgtype.UUID
 }
 
+type Playtime struct {
+	UserID       pgtype.UUID
+	GameID       pgtype.UUID
+	Seconds      int64
+	LastPlayedAt pgtype.Timestamptz
+}
+
 type Release struct {
 	ID          pgtype.UUID
 	GameID      pgtype.UUID

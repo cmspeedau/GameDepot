@@ -184,7 +184,27 @@ func (s *Server) handleRelease(c *gin.Context) {
 		c.JSON(404, gin.H{"error": gin.H{"code": "not_found", "message": "release not found"}})
 		return
 	}
-	c.JSON(200, gin.H{"digest": rel.Digest, "totalSize": rel.TotalSize, "manifestUrl": "/api/v1/depot/manifests/" + rel.Digest})
+	launches, err := s.db.ListLaunchesForVersion(c.Request.Context(), pgtype.UUID{Bytes: versionID, Valid: true})
+	if err != nil {
+		launches = nil
+	}
+	launchDTOs := make([]launchDTO, 0, len(launches))
+	for _, l := range launches {
+		launchDTOs = append(launchDTOs, launchDTO{
+			ID:         uuidOf(l.ID),
+			Name:       l.Name,
+			Platform:   l.Platform,
+			Executable: l.Executable,
+			Arguments:  l.Arguments,
+			WorkingDir: l.WorkingDir,
+		})
+	}
+	c.JSON(200, gin.H{
+		"digest":      rel.Digest,
+		"totalSize":   rel.TotalSize,
+		"manifestUrl": "/api/v1/depot/manifests/" + rel.Digest,
+		"launches":    launchDTOs,
+	})
 }
 
 func (s *Server) handleDepotManifest(c *gin.Context) {

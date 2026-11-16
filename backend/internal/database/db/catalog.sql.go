@@ -172,6 +172,15 @@ func (q *Queries) DeleteCollection(ctx context.Context, arg DeleteCollectionPara
 	return err
 }
 
+const deleteLaunch = `-- name: DeleteLaunch :exec
+DELETE FROM launches WHERE id = $1
+`
+
+func (q *Queries) DeleteLaunch(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteLaunch, id)
+	return err
+}
+
 const getCollection = `-- name: GetCollection :one
 SELECT id, user_id, name, created_at FROM collections WHERE id = $1
 `
@@ -214,6 +223,26 @@ func (q *Queries) GetGameVersion(ctx context.Context, id pgtype.UUID) (GameVersi
 		&i.Platform,
 		&i.TotalSize,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getLaunch = `-- name: GetLaunch :one
+SELECT id, version_id, platform, name, executable, arguments, working_dir
+FROM launches WHERE id = $1
+`
+
+func (q *Queries) GetLaunch(ctx context.Context, id pgtype.UUID) (Launch, error) {
+	row := q.db.QueryRow(ctx, getLaunch, id)
+	var i Launch
+	err := row.Scan(
+		&i.ID,
+		&i.VersionID,
+		&i.Platform,
+		&i.Name,
+		&i.Executable,
+		&i.Arguments,
+		&i.WorkingDir,
 	)
 	return i, err
 }
@@ -400,7 +429,7 @@ func (q *Queries) ListGameVersions(ctx context.Context, gameID pgtype.UUID) ([]G
 
 const listLaunchesForVersion = `-- name: ListLaunchesForVersion :many
 SELECT id, version_id, platform, name, executable, arguments, working_dir
-FROM launches WHERE version_id = $1
+FROM launches WHERE version_id = $1 ORDER BY name ASC
 `
 
 func (q *Queries) ListLaunchesForVersion(ctx context.Context, versionID pgtype.UUID) ([]Launch, error) {

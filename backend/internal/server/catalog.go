@@ -239,19 +239,60 @@ func (s *Server) handleGamePage(c *gin.Context) {
 		return
 	}
 	versions, _ := s.db.ListGameVersions(c.Request.Context(), pgtype.UUID{Bytes: id, Valid: true})
+	type versionLaunch struct {
+		Version  db.GameVersion
+		Launches []db.Launch
+	}
+	vls := make([]versionLaunch, 0, len(versions))
+	for _, v := range versions {
+		ls, _ := s.db.ListLaunchesForVersion(c.Request.Context(), v.ID)
+		vls = append(vls, versionLaunch{Version: v, Launches: ls})
+	}
 	companies, _ := s.db.ListCompaniesForGame(c.Request.Context(), pgtype.UUID{Bytes: id, Valid: true})
 	tags, _ := s.db.ListTagsForGame(c.Request.Context(), pgtype.UUID{Bytes: id, Valid: true})
 	allCompanies, _ := s.db.ListCompanies(c.Request.Context())
 	allTags, _ := s.db.ListTags(c.Request.Context())
 	s.render(c, "game.html", gin.H{
-		"Title":        game.Name,
-		"Game":         game,
-		"Versions":     versions,
-		"Companies":    companies,
-		"Tags":         tags,
-		"AllCompanies": allCompanies,
-		"AllTags":      allTags,
+		"Title":           game.Name,
+		"Game":            game,
+		"Versions":        versions,
+		"VersionLaunches": vls,
+		"Companies":       companies,
+		"Tags":            tags,
+		"AllCompanies":    allCompanies,
+		"AllTags":         allTags,
 	})
+}
+
+func (s *Server) handleGameVersions(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(400, gin.H{"error": gin.H{"code": "bad_request", "message": "bad id"}})
+		return
+	}
+	versions, err := s.db.ListGameVersions(c.Request.Context(), pgtype.UUID{Bytes: id, Valid: true})
+	if err != nil {
+		c.JSON(404, gin.H{"error": gin.H{"code": "not_found", "message": "game not found"}})
+		return
+	}
+	type item struct {
+		ID         string `json:"id"`
+		Name       string `json:"name"`
+		Platform   string `json:"platform"`
+		TotalSize  int64  `json:"totalSize"`
+		ReleasedAt string `json:"releasedAt"`
+	}
+	out := make([]item, 0, len(versions))
+	for _, v := range versions {
+		out = append(out, item{
+			ID:         uuidOf(v.ID),
+			Name:       v.Name,
+			Platform:   v.Platform,
+			TotalSize:  v.TotalSize,
+			ReleasedAt: timeOf(v.CreatedAt),
+		})
+	}
+	c.JSON(200, out)
 }
 
 func (s *Server) handleGameUpdate(c *gin.Context) {
@@ -426,20 +467,6 @@ func (s *Server) handleGame(c *gin.Context) {
 		return
 	}
 	c.JSON(200, g)
-}
-
-func (s *Server) handleGameVersions(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(400, gin.H{"error": gin.H{"code": "bad_request", "message": "bad id"}})
-		return
-	}
-	vs, err := s.db.ListGameVersions(c.Request.Context(), pgtype.UUID{Bytes: id, Valid: true})
-	if err != nil {
-		c.JSON(500, gin.H{"error": gin.H{"code": "internal", "message": "list failed"}})
-		return
-	}
-	c.JSON(200, vs)
 }
 
 func slugify(s string) string {

@@ -59,7 +59,14 @@ RETURNING id, version_id, platform, name, executable, arguments, working_dir;
 
 -- name: ListLaunchesForVersion :many
 SELECT id, version_id, platform, name, executable, arguments, working_dir
-FROM launches WHERE version_id = $1;
+FROM launches WHERE version_id = $1 ORDER BY name ASC;
+
+-- name: GetLaunch :one
+SELECT id, version_id, platform, name, executable, arguments, working_dir
+FROM launches WHERE id = $1;
+
+-- name: DeleteLaunch :exec
+DELETE FROM launches WHERE id = $1;
 
 -- name: CreateCollection :one
 INSERT INTO collections (id, user_id, name) VALUES ($1, $2, $3)
