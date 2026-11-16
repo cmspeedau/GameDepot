@@ -144,7 +144,9 @@ backup.
       is complete and smoke-tested against a live server (push with optimistic
       concurrency, idempotent no-op, stale-base conflict 409, per-version download,
       restore, pin, delete guards, retention window, and the save-path manifest read).
-      The desktop Rust collector that expands roots, packs `tar.zstd`, and syncs is next.
+      Desktop: `saves.rs` computes the identical `contentHash` (cross-language golden),
+      expands root templates, and round-trips a `tar.zstd` archive. The root-directory
+      walker, save-sync orchestration over the API, and the UI remain.
 - [ ] Store ingestion: GOG first, then Epic, with an encrypted connection store.
 - [ ] Metadata providers with a manual fallback.
 - [ ] Cache node for LAN and offline use (see below).

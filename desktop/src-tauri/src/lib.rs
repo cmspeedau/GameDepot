@@ -7,6 +7,7 @@ pub mod download;
 pub mod install;
 pub mod installer;
 pub mod launch;
+pub mod saves;
 pub mod state;
 pub mod store;
 
