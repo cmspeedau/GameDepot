@@ -54,6 +54,57 @@ pub fn build_command(spec: &LaunchSpec) -> Command {
     cmd
 }
 
+/// Build a LaunchSpec for running a Windows title through umu-launcher + Proton.
+/// `extra_env` is merged only for keys that look like safe game/runtime variables.
+pub fn umu_launch_spec(
+    umu_path: std::path::PathBuf,
+    game_exe: std::path::PathBuf,
+    prefix: std::path::PathBuf,
+    runner_path: std::path::PathBuf,
+    game_id: &str,
+    store: &str,
+    extra_env: &std::collections::BTreeMap<String, String>,
+    wrappers: &[String],
+) -> LaunchSpec {
+    let mut env = std::collections::BTreeMap::new();
+    env.insert("WINEPREFIX".to_string(), prefix.display().to_string());
+    env.insert("GAMEID".to_string(), format!("gamedepot-{game_id}"));
+    if !store.is_empty() {
+        env.insert("STORE".to_string(), store.to_string());
+    }
+    env.insert("PROTONPATH".to_string(), runner_path.display().to_string());
+    for (k, v) in extra_env {
+        if is_safe_env_key(k) {
+            env.insert(k.clone(), v.clone());
+        }
+    }
+
+    let mut spec = if wrappers.is_empty() {
+        LaunchSpec::new(umu_path.display().to_string())
+    } else {
+        // Chain wrappers: outermost first.
+        let mut s = LaunchSpec::new(wrappers[0].clone());
+        for w in &wrappers[1..] {
+            s = s.arg(w.clone());
+        }
+        s = s.arg(umu_path.display().to_string());
+        s
+    };
+    spec = spec.arg(game_exe.display().to_string());
+    for (k, v) in &env {
+        spec = spec.env(k.clone(), v.clone());
+    }
+    spec
+}
+
+fn is_safe_env_key(k: &str) -> bool {
+    const PREFIXES: &[&str] = &[
+        "DXVK_", "VKD3D_", "PROTON_", "WINE", "MANGOHUD", "GAMEMODE", "WINEPREFIX",
+        "GAMEID", "STORE", "PROTONPATH",
+    ];
+    PREFIXES.iter().any(|p| k.starts_with(p)) || k == "MANGOHUD"
+}
+
 #[derive(Debug)]
 pub struct RunResult {
     pub code: Option<i32>,

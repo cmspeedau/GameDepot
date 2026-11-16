@@ -7,7 +7,9 @@ pub mod download;
 pub mod install;
 pub mod installer;
 pub mod launch;
+pub mod prefix;
 pub mod playtime;
+pub mod runner;
 pub mod saves;
 pub mod save_sync;
 pub mod state;
@@ -43,7 +45,11 @@ pub fn run() {
             commands::signed_in,
             commands::library_list,
             commands::install_version,
-            commands::playtime_report
+            commands::playtime_report,
+            commands::runner_discover,
+            commands::prefix_path_for,
+            commands::prefix_size_for,
+            commands::runner_install_ge_proton
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

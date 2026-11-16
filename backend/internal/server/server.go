@@ -130,6 +130,7 @@ func (s *Server) Handler() http.Handler {
 	api.GET("/library", s.requireBearer(s.handleLibrary))
 	api.GET("/games/:id", s.requireBearer(s.handleGame))
 	api.GET("/games/:id/versions", s.requireBearer(s.handleGameVersions))
+	api.GET("/games/:id/recipe", s.requireBearer(s.handleGameRecipe))
 	api.GET("/releases/:versionId", s.requireBearer(s.handleRelease))
 	api.GET("/playtime", s.requireBearer(s.handlePlaytimeList))
 	api.POST("/playtime", s.requireBearer(s.handlePlaytimeAdd))

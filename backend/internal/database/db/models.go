@@ -183,6 +183,17 @@ type Release struct {
 	PublishedAt pgtype.Timestamptz
 }
 
+type RunnerRecipe struct {
+	ID            pgtype.UUID
+	GameID        pgtype.UUID
+	VersionID     pgtype.UUID
+	Profile       []byte
+	Source        string
+	Compatibility string
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+}
+
 type SavePath struct {
 	ID        pgtype.UUID
 	GameID    pgtype.UUID

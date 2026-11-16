@@ -8,6 +8,8 @@ use crate::config::Settings;
 use crate::download::SystemSleeper;
 use crate::install::InstallReport;
 use crate::installer::Installer;
+use crate::prefix;
+use crate::runner;
 use crate::state::AppState;
 
 fn e<E: std::fmt::Display>(err: E) -> String {
@@ -104,4 +106,36 @@ pub async fn playtime_report(
         .post_playtime(&game_id, seconds)
         .await
         .map_err(e)
+}
+
+#[derive(serde::Serialize)]
+pub struct RunnerDiscovery {
+    pub umu: Option<String>,
+    pub builds: Vec<runner::RunnerBuild>,
+}
+
+#[tauri::command]
+pub async fn runner_discover() -> Result<RunnerDiscovery, String> {
+    let (umu, builds) = runner::discover();
+    Ok(RunnerDiscovery {
+        umu: umu.map(|p| p.display().to_string()),
+        builds,
+    })
+}
+
+#[tauri::command]
+pub async fn prefix_path_for(game_id: String, profile: String) -> Result<String, String> {
+    prefix::prefix_path(&game_id, &profile)
+        .map(|p| p.display().to_string())
+        .map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+pub async fn prefix_size_for(path: String) -> Result<u64, String> {
+    Ok(prefix::prefix_size(std::path::Path::new(&path)))
+}
+
+#[tauri::command]
+pub async fn runner_install_ge_proton() -> Result<runner::RunnerBuild, String> {
+    runner::install_latest_ge_proton().await.map_err(|e| e.to_string())
 }
