@@ -4,7 +4,10 @@ use std::sync::Arc;
 use crate::api::HttpApiClient;
 use crate::auth::{KeyStore, KeyringStore};
 use crate::config::Settings;
+use crate::playtime::{PlaySession, RealClock};
 use crate::store::Store;
+use std::collections::HashMap;
+use std::sync::Mutex;
 
 /// Shared application state managed by Tauri. Holds the SQLite store handle, the
 /// settings file location, and the token store. Cheap to clone is not required; commands
@@ -14,6 +17,7 @@ pub struct AppState {
     pub settings_path: PathBuf,
     pub db_path: PathBuf,
     pub tokens: Box<dyn KeyStore + Send + Sync>,
+    pub playtime_sessions: Mutex<HashMap<String, PlaySession<RealClock>>>,
 }
 
 impl AppState {
@@ -28,6 +32,7 @@ impl AppState {
             settings_path: root.join("settings.json"),
             db_path,
             tokens: Box::new(KeyringStore),
+            playtime_sessions: Mutex::new(HashMap::new()),
         })
     }
 
@@ -43,6 +48,25 @@ impl AppState {
     pub fn client(&self) -> Result<HttpApiClient, String> {
         let url = self.settings().normalized_server_url().map_err(|e| e.to_string())?;
         HttpApiClient::new(url, self.tokens.get()).map_err(|e| e.to_string())
+    }
+
+    pub fn playtime_start(&self, game_id: &str) {
+        let mut m = self.playtime_sessions.lock().unwrap();
+        m.entry(game_id.to_string())
+            .or_insert_with(|| PlaySession::new(RealClock))
+            .start();
+    }
+
+    pub fn playtime_stop(&self, game_id: &str) -> u64 {
+        let mut m = self.playtime_sessions.lock().unwrap();
+        if let Some(s) = m.get_mut(game_id) {
+            s.stop();
+            let secs = s.elapsed_secs();
+            s.reset();
+            secs
+        } else {
+            0
+        }
     }
 }
 

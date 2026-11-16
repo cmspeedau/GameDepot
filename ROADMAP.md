@@ -121,7 +121,11 @@ integrity check passes on a fresh publish.
       spawns via execve with an args array (no shell), applies env and cwd, captures exit
       status and output, and detaches for real games. Tested against real processes; wiring
       to a downloaded install and running-game tracking is next.
-- [ ] Playtime reporting.
+- [~] Playtime reporting. `playtime.rs` accumulates per-session seconds with an
+      injectable clock and reports deltas through `ApiClient::post_playtime`, clamped
+      to the server's accepted range; `report_session` tested with a mock client. The
+      `playtime_start`/`playtime_stop` commands and AppState bookkeeping are wired
+      (compile-checked); live timing in a game session is not yet exercised.
 - [x] Settings: server URL, download directory, concurrency, theme.
 
 Exit criteria: pair, download, install and launch a real game, with playtime recorded,
