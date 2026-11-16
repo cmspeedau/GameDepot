@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::io::{Cursor, Read};
 use std::path::Path;
 
+use hex;
 use sha2::{Digest, Sha256};
 
 /// One collected save file. `key` is the path relative to the game's save root; it is
@@ -81,44 +82,6 @@ fn file_mode(_path: &Path) -> u32 {
     0o644
 }
 
-/// Pack the given (entry, bytes) pairs into a `tar.zstd` archive. Keys are stored as the
-/// tar member paths; the entry mode is applied. Content-addressed blobs already exclude
-/// duplicates, so each key appears once.
-pub fn build_archive(items: &[(FileEntry, Vec<u8>)]) -> Result<Vec<u8>, String> {
-    let mut ar = tar::Builder::new(Vec::new());
-    for (e, bytes) in items {
-        let mut header = tar::Header::new_gnu();
-        header.set_size(bytes.len() as u64);
-        header.set_mode(e.mode as u32 & 0o7777);
-        header.set_cksum();
-        ar.append_data(&mut header, &e.key, Cursor::new(bytes))
-            .map_err(|err| err.to_string())?;
-    }
-    let tar = ar.into_inner().map_err(|e| e.to_string())?;
-    zstd::encode_all(Cursor::new(tar), 3).map_err(|e| e.to_string())
-}
-
-/// Read a `tar.zstd` archive back into (key, mode, bytes) for restore.
-pub fn read_archive(bytes: &[u8]) -> Result<Vec<(String, u32, Vec<u8>)>, String> {
-    let tar = zstd::decode_all(bytes).map_err(|e| e.to_string())?;
-    let mut ar = tar::Archive::new(Cursor::new(tar));
-    let mut out = Vec::new();
-    for entry in ar.entries().map_err(|e| e.to_string())? {
-        let mut entry = entry.map_err(|e| e.to_string())?;
-        let path = entry
-            .path()
-            .map_err(|e| e.to_string())?
-            .to_string_lossy()
-            .replace('\\', "/");
-        let header = entry.header();
-        let mode = header.mode().unwrap_or(0o644) as u32 & 0o7777;
-        let mut buf = Vec::new();
-        entry.read_to_end(&mut buf).map_err(|e| e.to_string())?;
-        out.push((path, mode, buf));
-    }
-    Ok(out)
-}
-
 /// A save root is a directory on the user's machine (after template expansion) that
 /// holds a game's saves. Multiple roots are merged into one save set; when there is
 /// more than one, each file's key is prefixed with the root's label so the two sides
@@ -174,78 +137,48 @@ fn walk_root(root: &SaveRoot, multi: bool, out: &mut Vec<FileEntry>) -> Result<(
     Ok(())
 }
 
+/// Pack the given (entry, bytes) pairs into a `tar.zstd` archive. Keys are stored as the
+/// tar member paths; the entry mode is applied. Content-addressed blobs already exclude
+/// duplicates, so each key appears once.
+pub fn build_archive(items: &[(FileEntry, Vec<u8>)]) -> Result<Vec<u8>, String> {
+    let mut ar = tar::Builder::new(Vec::new());
+    for (e, bytes) in items {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(bytes.len() as u64);
+        header.set_mode(e.mode as u32 & 0o7777);
+        header.set_cksum();
+        ar.append_data(&mut header, &e.key, Cursor::new(bytes))
+            .map_err(|err| err.to_string())?;
+    }
+    let tar_bytes = ar.into_inner().map_err(|e| e.to_string())?;
+    zstd::encode_all(Cursor::new(tar_bytes), 3).map_err(|e| e.to_string())
+}
+
+/// Read a `tar.zstd` archive back into (key, mode, bytes) for restore.
+pub fn read_archive(bytes: &[u8]) -> Result<Vec<(String, u32, Vec<u8>)>, String> {
+    let tar_bytes = zstd::decode_all(bytes).map_err(|e| e.to_string())?;
+    let mut ar = tar::Archive::new(Cursor::new(tar_bytes));
+    let mut out = Vec::new();
+    for entry in ar.entries().map_err(|e| e.to_string())? {
+        let mut entry = entry.map_err(|e| e.to_string())?;
+        let path = entry
+            .path()
+            .map_err(|e| e.to_string())?
+            .to_string_lossy()
+            .replace('\\', "/");
+        let header = entry.header();
+        let mode = header.mode().unwrap_or(0o644) as u32 & 0o7777;
+        let mut buf = Vec::new();
+        entry.read_to_end(&mut buf).map_err(|e| e.to_string())?;
+        out.push((path, mode, buf));
+    }
+    Ok(out)
+}
 
 #[cfg(test)]
-mod collect_tests {
+mod tests {
     use super::*;
     use std::fs;
-    use std::io::Write;
-
-    #[test]
-    fn collects_files_with_relative_keys() {
-        let dir = std::env::temp_dir().join(format!("gd-collect-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(dir.join("sub")).unwrap();
-        fs::write(dir.join("a.txt"), b"hello").unwrap();
-        fs::write(dir.join("sub/b.txt"), b"world").unwrap();
-        // symlink must be skipped
-        #[cfg(unix)]
-        let _ = std::os::unix::fs::symlink("/etc/hostname", dir.join("link.txt"));
-
-        let roots = vec![SaveRoot { label: "r".into(), base: dir.clone() }];
-        let entries = collect_files(&roots).unwrap();
-        assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].key, "a.txt");
-        assert_eq!(entries[1].key, "sub/b.txt");
-        assert_eq!(entries[0].size, 5);
-        // content hash stable
-        let h1 = content_hash(&entries);
-        let h2 = content_hash(&entries);
-        assert_eq!(h1, h2);
-        fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn multiple_roots_namespace_keys() {
-        let d1 = std::env::temp_dir().join(format!("gd-c1-{}", std::process::id()));
-        let d2 = std::env::temp_dir().join(format!("gd-c2-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d1);
-        let _ = fs::remove_dir_all(&d2);
-        fs::create_dir_all(&d1).unwrap();
-        fs::create_dir_all(&d2).unwrap();
-        fs::write(d1.join("x.txt"), b"1").unwrap();
-        fs::write(d2.join("x.txt"), b"2").unwrap();
-
-        let roots = vec![
-            SaveRoot { label: "rootA".into(), base: d1.clone() },
-            SaveRoot { label: "rootB".into(), base: d2.clone() },
-        ];
-        let entries = collect_files(&roots).unwrap();
-        assert_eq!(entries.len(), 2);
-        assert!(entries.iter().any(|e| e.key == "rootA/x.txt"));
-        assert!(entries.iter().any(|e| e.key == "rootB/x.txt"));
-        // both files have same size but different content hashes
-        let a = entries.iter().find(|e| e.key == "rootA/x.txt").unwrap();
-        let b = entries.iter().find(|e| e.key == "rootB/x.txt").unwrap();
-        assert_ne!(a.sha256, b.sha256);
-        fs::remove_dir_all(&d1).ok();
-        fs::remove_dir_all(&d2).ok();
-    }
-
-    #[test]
-    fn missing_root_is_an_error() {
-        let roots = vec![SaveRoot { label: "x".into(), base: std::path::PathBuf::from("/no/such/dir/xyz") }];
-        assert!(collect_files(&roots).is_err());
-    }
-
-    fn hex_encode(b: &[u8]) -> String {
-        const H: &[u8] = b"0123456789abcdef";
-        let mut out = String::with_capacity(b.len() * 2);
-        for &x in b { out.push(H[(x >> 4) as usize] as char); out.push(H[(x & 15) as usize] as char); }
-        out
-    }
-}
-    use super::*;
     use std::io::Write;
 
     #[test]
@@ -328,3 +261,54 @@ mod collect_tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    #[test]
+    fn collects_files_with_relative_keys() {
+        let dir = std::env::temp_dir().join(format!("gd-collect-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        std::fs::write(dir.join("a.txt"), b"hello").unwrap();
+        std::fs::write(dir.join("sub/b.txt"), b"world").unwrap();
+        #[cfg(unix)]
+        let _ = std::os::unix::fs::symlink("/etc/hostname", dir.join("link.txt"));
+
+        let roots = vec![SaveRoot { label: "r".into(), base: dir.clone() }];
+        let entries = collect_files(&roots).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].key, "a.txt");
+        assert_eq!(entries[1].key, "sub/b.txt");
+        assert_eq!(entries[0].size, 5);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn multiple_roots_namespace_keys() {
+        let d1 = std::env::temp_dir().join(format!("gd-c1-{}", std::process::id()));
+        let d2 = std::env::temp_dir().join(format!("gd-c2-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d1);
+        let _ = std::fs::remove_dir_all(&d2);
+        std::fs::create_dir_all(&d1).unwrap();
+        std::fs::create_dir_all(&d2).unwrap();
+        std::fs::write(d1.join("x.txt"), b"1").unwrap();
+        std::fs::write(d2.join("x.txt"), b"2").unwrap();
+
+        let roots = vec![
+            SaveRoot { label: "rootA".into(), base: d1.clone() },
+            SaveRoot { label: "rootB".into(), base: d2.clone() },
+        ];
+        let entries = collect_files(&roots).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert!(entries.iter().any(|e| e.key == "rootA/x.txt"));
+        assert!(entries.iter().any(|e| e.key == "rootB/x.txt"));
+        let a = entries.iter().find(|e| e.key == "rootA/x.txt").unwrap();
+        let b = entries.iter().find(|e| e.key == "rootB/x.txt").unwrap();
+        assert_ne!(a.sha256, b.sha256);
+        std::fs::remove_dir_all(&d1).ok();
+        std::fs::remove_dir_all(&d2).ok();
+    }
+
+    #[test]
+    fn missing_root_is_an_error() {
+        let roots = vec![SaveRoot { label: "x".into(), base: std::path::PathBuf::from("/no/such/dir/xyz") }];
+        assert!(collect_files(&roots).is_err());
+    }
+}

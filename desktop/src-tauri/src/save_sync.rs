@@ -1,11 +1,6 @@
-use std::path::Path;
-use std::sync::Arc;
 
-use async_trait::async_trait;
 
 use crate::api::{ApiClient, ApiError};
-use crate::depot::manifest::Manifest;
-use crate::saves;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SyncOutcome {

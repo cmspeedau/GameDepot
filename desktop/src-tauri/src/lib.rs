@@ -7,6 +7,7 @@ pub mod download;
 pub mod install;
 pub mod installer;
 pub mod launch;
+pub mod playtime;
 pub mod saves;
 pub mod save_sync;
 pub mod state;

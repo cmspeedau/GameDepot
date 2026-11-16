@@ -1,5 +1,8 @@
 use std::path::{Path, PathBuf};
 
+use hex;
+use sha2::Digest;
+
 use crate::depot::{
     crypto::{self, DepotError},
     manifest::{FileEntry, Manifest},
@@ -19,6 +22,8 @@ pub enum InstallError {
 pub struct InstallReport {
     pub files: Vec<String>,
     pub bytes: u64,
+    /// Files that were already present with the correct hash and were not rewritten.
+    pub skipped: Vec<String>,
 }
 
 /// Join `rel` onto `dest`, refusing absolute paths and traversal. The manifest was
@@ -58,9 +63,25 @@ where
     std::fs::create_dir_all(dest).map_err(|e| InstallError::Io(e.to_string()))?;
 
     for file in files {
+        let target = join_safe(dest, &file.path)?;
+        // Idempotent re-install: if the file is already present and its content hash
+        // matches the manifest, do not rewrite it. A differing (or corrupt) file is
+        // overwritten, since the manifest is authoritative.
+        if let Ok(existing) = std::fs::read(&target) {
+            let mut h = sha2::Sha256::new();
+            h.update(&existing);
+            if hex::encode(h.finalize()) == file.sha256 {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = std::fs::set_permissions(&target, std::fs::Permissions::from_mode(file.mode & 0o7777));
+                }
+                report.skipped.push(file.path.clone());
+                continue;
+            }
+        }
         let bytes = crypto::assemble_file(m, file, |sha| read_object(sha))
             .map_err(InstallError::Depot)?;
-        let target = join_safe(dest, &file.path)?;
         write_atomic(&target, &bytes, file.mode)?;
         report.bytes += bytes.len() as u64;
         report.files.push(file.path.clone());
@@ -138,6 +159,30 @@ mod tests {
             let mode = std::fs::metadata(dest.join("a.txt")).unwrap().permissions().mode();
             assert_eq!(mode & 0o777, 0o644);
         }
+
+        std::fs::remove_dir_all(&dest).ok();
+    }
+
+    #[test]
+    fn reuses_matching_files_and_overwrites_differing_ones() {
+        use sha2::Digest;
+        let (_root, depot) = fixture();
+        let dest = std::env::temp_dir().join(format!("gd-conflict-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dest);
+        std::fs::create_dir_all(&dest).unwrap();
+        // Pre-write a.txt with the correct content -> should be skipped.
+        std::fs::write(dest.join("a.txt"), b"hello world").unwrap();
+        // Pre-write sub/b.txt with WRONG content -> should be overwritten.
+        std::fs::create_dir_all(dest.join("sub")).unwrap();
+        std::fs::write(dest.join("sub/b.txt"), b"garbage").unwrap();
+
+        let mut reader = |sha: &str| depot.read_object(sha);
+        let report = install_release(&depot.manifest, &dest, &depot.manifest.files, &mut reader).unwrap();
+
+        assert_eq!(report.files, vec!["sub/b.txt".to_string()]);
+        assert_eq!(report.skipped, vec!["a.txt".to_string()]);
+        assert_eq!(std::fs::read(dest.join("a.txt")).unwrap(), b"hello world");
+        assert_eq!(std::fs::read(dest.join("sub/b.txt")).unwrap(), b"second file content");
 
         std::fs::remove_dir_all(&dest).ok();
     }

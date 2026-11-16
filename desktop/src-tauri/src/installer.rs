@@ -194,7 +194,8 @@ mod tests {
 
         // Second install resumes from cache without re-fetching (objects already done).
         let report2 = installer.install_version("game-1", "ver-1", &dest).await.unwrap();
-        assert_eq!(report2.files.len(), 2);
+        assert!(report2.files.is_empty(), "second install should skip both files");
+        assert_eq!(report2.skipped.len(), 2);
 
         std::fs::remove_dir_all(&work).ok();
     }
