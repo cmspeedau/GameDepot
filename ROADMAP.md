@@ -272,6 +272,10 @@ GameDepot consumes the existing network instead of building one:
 - Documentation should cover wg-easy, OPNsense and a single VPS peer, not a control
   plane.
 
+A counterexample worth watching: Drop, the closest comparable project, embeds Tailscale in
+its Tauri app (`desktop/src-tauri/tailscale`) instead of assuming the host already runs a
+mesh. That changes what users come to expect, even if it is more software to ship.
+
 If a self-contained direct path ever becomes a hard requirement — no external stack and
 no public endpoint — QUIC with mutual TLS is a cheaper answer than embedding WireGuard:
 no TUN, no root, and connection IDs survive an address change.
