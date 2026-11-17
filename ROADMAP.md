@@ -238,7 +238,8 @@ because they shape the cache and save-sync work:
 - **Relay state, not the metered flag.** A device can report an unmetered network while
   the mesh forces its traffic through a public relay. Read the path from the daemon
   (`CurAddr`/`Relay` in Tailscale, the relayed flag in NetBird) and treat relayed like
-  metered: background chunk transfer pauses, saves and metadata continue.
+  metered: background chunk transfer pauses, saves and metadata continue. With plain
+  WireGuard there is no daemon to ask — measure RTT and throughput instead, as below.
 - **Parallel endpoint probe.** Qualify LAN and remote together with a few hundred
   milliseconds per endpoint and take the first healthy answer, instead of falling back
   serially and waiting out a TCP timeout when a device leaves home Wi-Fi.
@@ -248,38 +249,29 @@ access route for the dashboard and small metadata behind CGNAT, but it is one
 multiplexed TCP stream capped by the relay host's uplink — not a substitute for a direct
 path when moving depot objects.
 
-### Own WireGuard transport (idea)
+### WireGuard: don't bundle it (decided)
 
-The mesh section above leans on someone else's control plane. A different shape is to
-ship the transport in the box: server and desktop each carry a userspace WireGuard
-implementation (`golang.zx2c4.com/wireguard` on the Go side, `boringtun` in the Tauri
-core), and pairing issues each device a key pair next to its client token. The `clients`
-table already holds per-device rows with scopes, so a `wg_pubkey` column and a generated
-peer config extend the flow that exists rather than adding a second identity system.
+The audience already runs the network. A homelabber self-hosting GameDepot has WireGuard
+somewhere: OPNsense or pfSense, wg-easy, a `wg0` peer on a VPS, or Headscale/Tailscale/
+NetBird when CGNAT makes plain WireGuard painful. Shipping a second WireGuard stack would
+duplicate keys, compete for ports and routes, and demand a TUN driver on Windows for no
+capability the operator does not already have. It is recorded here as considered and
+rejected, not deferred.
 
-What it buys: no daemon, no Tailscale account, no control-plane dependency, and the same
-pairing UX. What it does not buy: NAT traversal. WireGuard has no hole punching, no
-rendezvous and no relay, so it works when at least one side has a reachable UDP endpoint
-and needs both a relay and a coordination service when both ends sit behind CGNAT — the
-part Tailscale and NetBird actually earn their keep on. Two devices behind the same NAT
-also need hairpin support from the router.
+GameDepot consumes the existing network instead of building one:
 
-Open questions before any code:
+- Endpoints are URLs — a LAN IP, a WireGuard address, a mesh DNS name — and the client
+  stores several and races them. It never creates a tunnel, holds a peer key, or touches
+  routing.
+- Keys, peers and NAT traversal stay with the operator's stack.
+- The path policy from the mesh section still applies, but plain WireGuard has no daemon
+  API to ask: no `Relay` field, no `CurAddr`. Detect empirically instead — RTT and
+  first-chunk throughput against the endpoint, plus a per-endpoint "treat as metered"
+  switch — because a WireGuard endpoint on a VPS is a relay even when the tunnel itself
+  is direct and the OS reports the interface as ordinary Ethernet.
+- Documentation should cover wg-easy, OPNsense and a single VPS peer, not a control
+  plane.
 
-- **TUN or not.** A real interface needs root/Administrator and a Windows driver. A
-  userspace path that carries only GameDepot traffic avoids that, but then the machine
-  is not on the network — only the app is.
-- **Conflicts.** An existing WireGuard or Tailscale install may hold the port; no
-  default routes, split tunnel to the server only.
-- **Lifecycle.** Peer keys must rotate and revoke with the client token, or a leaked key
-  outlives the pairing that created it.
-
-**Cheaper alternative to weigh first:** QUIC (`quic-go` / `quinn`) with mutual TLS. No
-TUN, no root, and connection IDs survive an address change, which is the Steam Deck
-roaming case exactly. It is an application transport rather than a network interface, so
-it solves the sync path and nothing else. If the goal is fast roaming-capable depot
-transfer without a third-party daemon, QUIC reaches it with less surface than a
-self-managed WireGuard network.
-
-Decision rule for later: public server endpoint → embedded WireGuard is cheap; both
-sides behind CGNAT → an existing mesh is the right answer; roaming without TUN → QUIC.
+If a self-contained direct path ever becomes a hard requirement — no external stack and
+no public endpoint — QUIC with mutual TLS is a cheaper answer than embedding WireGuard:
+no TUN, no root, and connection IDs survive an address change.
