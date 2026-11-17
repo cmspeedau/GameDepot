@@ -226,3 +226,24 @@ per-chunk cache keyed by the content hash. Steam's own tooling (DepotDownloader)
 it with a single config switch, the same shape as the client cache URL override above.
 The per-chunk lean is confirmed by that model: a cached object keyed by its hash is
 never stale and needs no invalidation, so eviction is just dropping a file.
+
+### Mesh and roaming
+
+Handhelds leave the house, so one server URL is not enough. The plan is Tailscale,
+Headscale and NetBird as transport, with the desktop holding a LAN endpoint and a mesh
+endpoint and choosing between them. The detail lives in
+[issue #9](https://github.com/cmspeedau/GameDepot/issues/9); two constraints belong here
+because they shape the cache and save-sync work:
+
+- **Relay state, not the metered flag.** A device can report an unmetered network while
+  the mesh forces its traffic through a public relay. Read the path from the daemon
+  (`CurAddr`/`Relay` in Tailscale, the relayed flag in NetBird) and treat relayed like
+  metered: background chunk transfer pauses, saves and metadata continue.
+- **Parallel endpoint probe.** Qualify LAN and remote together with a few hundred
+  milliseconds per endpoint and take the first healthy answer, instead of falling back
+  serially and waiting out a TCP timeout when a device leaves home Wi-Fi.
+
+Bulk transfer belongs on a direct WireGuard path. An outbound HTTPS tunnel is a valid
+access route for the dashboard and small metadata behind CGNAT, but it is one
+multiplexed TCP stream capped by the relay host's uplink — not a substitute for a direct
+path when moving depot objects.
