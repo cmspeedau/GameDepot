@@ -171,9 +171,31 @@ phases above.
       per the revisit trigger in
       [`docs/adr/0008-chunk-size.md`](docs/adr/0008-chunk-size.md). This is a
       `gamedepot-release` version bump with a migration note for existing objects.
+- [ ] Serve the desktop client from the server (see below).
 
 Exit criteria for v2: a title launches through a chosen emulator or compatibility tool,
 and new releases build at the smaller chunk size with cross-version reuse measurable.
+
+### Desktop client served by the server
+
+The launcher should be downloadable from the instance that runs it, not only from GitHub;
+[Drop asked for the same thing](https://github.com/Drop-OSS/drop/issues/196) and never got
+an answer. This is v2 because it depends on a release pipeline the first version does not
+need.
+
+- A downloads page that picks the installer for the visitor's OS, and the same artifacts
+  reachable by direct URL for scripts.
+- The Tauri 2 updater points at the server: `latest.json` plus target/arch artifacts under
+  a mounted `clients/` volume, with the pubkey pinned in the app. No runtime fetch from
+  GitHub, so an air-gapped or LAN-only instance still updates.
+- The manifest is signed and the installer verifies it before running anything; the
+  SHA-256 in the same document is a corruption check, not authenticity. This is the
+  Zorven 4.2 lesson applied before it becomes a finding.
+- Version skew is explicit: a server records which client versions it serves, and the
+  client refuses an update older than itself.
+
+Not in scope: building the client inside the server image, or serving macOS/Windows
+installers from a Linux-only deployment without uploading them first.
 
 ## Future ideas
 
