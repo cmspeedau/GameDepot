@@ -247,3 +247,39 @@ Bulk transfer belongs on a direct WireGuard path. An outbound HTTPS tunnel is a 
 access route for the dashboard and small metadata behind CGNAT, but it is one
 multiplexed TCP stream capped by the relay host's uplink — not a substitute for a direct
 path when moving depot objects.
+
+### Own WireGuard transport (idea)
+
+The mesh section above leans on someone else's control plane. A different shape is to
+ship the transport in the box: server and desktop each carry a userspace WireGuard
+implementation (`golang.zx2c4.com/wireguard` on the Go side, `boringtun` in the Tauri
+core), and pairing issues each device a key pair next to its client token. The `clients`
+table already holds per-device rows with scopes, so a `wg_pubkey` column and a generated
+peer config extend the flow that exists rather than adding a second identity system.
+
+What it buys: no daemon, no Tailscale account, no control-plane dependency, and the same
+pairing UX. What it does not buy: NAT traversal. WireGuard has no hole punching, no
+rendezvous and no relay, so it works when at least one side has a reachable UDP endpoint
+and needs both a relay and a coordination service when both ends sit behind CGNAT — the
+part Tailscale and NetBird actually earn their keep on. Two devices behind the same NAT
+also need hairpin support from the router.
+
+Open questions before any code:
+
+- **TUN or not.** A real interface needs root/Administrator and a Windows driver. A
+  userspace path that carries only GameDepot traffic avoids that, but then the machine
+  is not on the network — only the app is.
+- **Conflicts.** An existing WireGuard or Tailscale install may hold the port; no
+  default routes, split tunnel to the server only.
+- **Lifecycle.** Peer keys must rotate and revoke with the client token, or a leaked key
+  outlives the pairing that created it.
+
+**Cheaper alternative to weigh first:** QUIC (`quic-go` / `quinn`) with mutual TLS. No
+TUN, no root, and connection IDs survive an address change, which is the Steam Deck
+roaming case exactly. It is an application transport rather than a network interface, so
+it solves the sync path and nothing else. If the goal is fast roaming-capable depot
+transfer without a third-party daemon, QUIC reaches it with less surface than a
+self-managed WireGuard network.
+
+Decision rule for later: public server endpoint → embedded WireGuard is cheap; both
+sides behind CGNAT → an existing mesh is the right answer; roaming without TUN → QUIC.
