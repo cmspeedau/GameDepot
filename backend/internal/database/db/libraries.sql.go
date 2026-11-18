@@ -170,6 +170,36 @@ func (q *Queries) GetReleaseByGameVersion(ctx context.Context, arg GetReleaseByG
 	return i, err
 }
 
+const listAllReleases = `-- name: ListAllReleases :many
+SELECT id, digest, manifest FROM releases ORDER BY published_at ASC
+`
+
+type ListAllReleasesRow struct {
+	ID       pgtype.UUID
+	Digest   string
+	Manifest []byte
+}
+
+func (q *Queries) ListAllReleases(ctx context.Context) ([]ListAllReleasesRow, error) {
+	rows, err := q.db.Query(ctx, listAllReleases)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllReleasesRow
+	for rows.Next() {
+		var i ListAllReleasesRow
+		if err := rows.Scan(&i.ID, &i.Digest, &i.Manifest); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLibraries = `-- name: ListLibraries :many
 SELECT id, name, path, kind, created_at FROM libraries ORDER BY created_at ASC
 `

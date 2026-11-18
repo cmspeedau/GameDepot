@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -15,16 +16,22 @@ type Config struct {
 	DataDir     string
 	LogLevel    string
 	AutoMigrate bool
+
+	// Maintenance intervals for scheduled jobs. Zero disables the loop.
+	IntegrityInterval time.Duration
+	CleanupInterval   time.Duration
 }
 
 func Load() (Config, error) {
 	c := Config{
-		Port:        "4000",
-		ExternalURL: "http://localhost:4000",
-		LibraryDir:  "./.data/library",
-		DataDir:     "./.data/data",
-		LogLevel:    "info",
-		AutoMigrate: true,
+		Port:              "4000",
+		ExternalURL:       "http://localhost:4000",
+		LibraryDir:        "./.data/library",
+		DataDir:           "./.data/data",
+		LogLevel:          "info",
+		AutoMigrate:       true,
+		IntegrityInterval: 24 * time.Hour,
+		CleanupInterval:   time.Hour,
 	}
 
 	if v := os.Getenv("DATABASE_URL"); v != "" {
@@ -51,6 +58,20 @@ func Load() (Config, error) {
 			return c, fmt.Errorf("invalid GAMEDEPOT_AUTO_MIGRATE: %w", err)
 		}
 		c.AutoMigrate = b
+	}
+	if v := os.Getenv("GAMEDEPOT_INTEGRITY_INTERVAL"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return c, fmt.Errorf("invalid GAMEDEPOT_INTEGRITY_INTERVAL: %w", err)
+		}
+		c.IntegrityInterval = d
+	}
+	if v := os.Getenv("GAMEDEPOT_CLEANUP_INTERVAL"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return c, fmt.Errorf("invalid GAMEDEPOT_CLEANUP_INTERVAL: %w", err)
+		}
+		c.CleanupInterval = d
 	}
 
 	if c.DatabaseURL == "" {

@@ -141,11 +141,17 @@ then relaunch after a client restart.
 - [x] Health and readiness endpoints. `GET /api/v1/health` is liveness (`204`, no
       database check); `GET /api/v1/ready` is readiness (database ping, `200`/`503`).
       Verified live.
+- [x] Integrity and cleanup tasks on a schedule. `internal/maintenance` re-verifies every
+      release manifest against the depot (digest, format, chunk references, object
+      existence and decryption) on `GAMEDEPOT_INTEGRITY_INTERVAL` (default 24h) and
+      sweeps expired pairing codes and sessions on `GAMEDEPOT_CLEANUP_INTERVAL`
+      (default 1h). Jobs never touch object storage; failures are logged per digest and
+      summarized. Unit-tested with a fake store, verified live: integrity reported the
+      published release and cleanup deleted injected expired rows.
 - [x] Upgrade procedure and version reporting. `GET /api/v1/version` reports the build
       (`internal/version`, settable at link time); the boot log carries the same value.
       Upgrade runbook in `docs/OPERATIONS.md` now includes the post-swap version and
       readiness checks.
-- [ ] Integrity and cleanup tasks on a schedule.
 - [x] Backup and restore runbook tested against a real dump. `pg_dump --format=custom`
       of a migrated database restored cleanly into a fresh database with all six goose
       migrations and the full schema present; runbook steps unchanged.

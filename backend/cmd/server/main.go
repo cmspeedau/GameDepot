@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -18,6 +19,8 @@ import (
 	"github.com/cmspeedau/gamedepot/internal/auth"
 	"github.com/cmspeedau/gamedepot/internal/config"
 	"github.com/cmspeedau/gamedepot/internal/database"
+	db "github.com/cmspeedau/gamedepot/internal/database/db"
+	"github.com/cmspeedau/gamedepot/internal/maintenance"
 	"github.com/cmspeedau/gamedepot/internal/server"
 	"github.com/cmspeedau/gamedepot/internal/version"
 	gamedepot "github.com/cmspeedau/gamedepot/sql"
@@ -41,7 +44,8 @@ func main() {
 	}
 	slog.SetDefault(slog.New(server.NewContextHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}))))
 
-	ctx := context.Background()
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	defer cancelCtx()
 
 	pool, err := database.NewPool(ctx, cfg)
 	if err != nil {
@@ -99,6 +103,20 @@ func main() {
 
 	srv := server.New(cfg, pool)
 
+	if cfg.IntegrityInterval > 0 || cfg.CleanupInterval > 0 {
+		mroot := filepath.Join(cfg.DataDir, "depot")
+		loop := &maintenance.Loop{
+			Job:       maintenance.NewJob(db.New(pool), mroot),
+			Integrity: cfg.IntegrityInterval,
+			Cleanup:   cfg.CleanupInterval,
+		}
+		loop.Start(ctx)
+		slog.Info("maintenance loop started",
+			"integrity_interval", cfg.IntegrityInterval.String(),
+			"cleanup_interval", cfg.CleanupInterval.String(),
+			"depot_root", mroot)
+	}
+
 	httpServer := &http.Server{
 		Addr:         ":" + cfg.Port,
 		Handler:      srv.Handler(),
@@ -119,6 +137,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	slog.Info("shutting down")
+	cancelCtx()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()

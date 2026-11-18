@@ -30,3 +30,6 @@ FROM releases WHERE game_id = $1 ORDER BY published_at DESC;
 
 -- name: DeleteRelease :exec
 DELETE FROM releases WHERE id = $1;
+
+-- name: ListAllReleases :many
+SELECT id, digest, manifest FROM releases ORDER BY published_at ASC;

@@ -22,3 +22,6 @@ SELECT id, user_id, token_hash, csrf_secret, remember, created_at, expires_at, l
 FROM sessions
 WHERE user_id = $1
 ORDER BY created_at DESC;
+
+-- name: DeleteExpiredSessions :execrows
+DELETE FROM sessions WHERE expires_at <= $1;

@@ -80,6 +80,21 @@ For a patch or minor release within the compatible line:
   which is the default in development. In production, run `gamedepot migrate` before
   swapping the binary, or set the variable true for the first boot.
 - A failed migration stops the process. There is no half-applied boot.
+
+## Scheduled maintenance
+
+The server runs two background jobs and logs a summary line each time:
+
+- **Integrity** (`GAMEDEPOT_INTEGRITY_INTERVAL`, default 24h): re-verifies every stored
+  release manifest against the depot, the same check the dashboard runs per release.
+  Failures are logged per digest; the pass continues so one bad file does not hide the
+  rest. Set the interval to `0` to disable.
+- **Cleanup** (`GAMEDEPOT_CLEANUP_INTERVAL`, default 1h): deletes expired pairing codes
+  and expired sessions. It never touches object storage; depot objects are append-only
+  and are only removed by explicit release deletion.
+
+Both jobs are safe to leave on a single instance; nothing in them is cluster aware, so
+disable them on all but one replica if you ever run more than one.
 - After the new process starts, confirm `GET /api/v1/version` reports the version you
   deployed and `GET /api/v1/ready` returns `200`. The boot log line `listening` carries
   the same version, so the log and the endpoint cannot drift apart.
