@@ -173,6 +173,10 @@ backup.
       noop, conflict with take-server and keep-mine resolutions), plus the Vue saves
       UI. The two-device save round-trip passed. Remaining for this item: a
       Windows/macOS path-template run and the store side below.
+      Out of scope by decision (ADR-0011): any integration with a provider's own save
+      cloud. GameDepot neither reads nor writes Ubisoft Connect saves, and a title with
+      both writers active can lose progress that neither side can explain, so the two
+      are mutually exclusive per game rather than reconciled.
 - [~] Store ingestion: GOG first, then Epic, with an encrypted connection store. GOG is
       ported to Go from this project's archived predecessor (ADR-0009): the code-paste
       sign-in, the three documented library endpoints with the owned-ids top-up, and

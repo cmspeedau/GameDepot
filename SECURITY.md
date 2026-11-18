@@ -99,6 +99,10 @@ Out of scope:
   checked before streaming.
 - Provider build id, manifest id and content digest stay distinct, so a manipulated
   manifest cannot make one build masquerade as another.
+- Adapters authenticate only to the endpoints their own acquisition flow needs. A
+  stored provider credential is never offered to a provider's save-sync service:
+  GameDepot does not read or write Ubisoft cloud saves, so a stolen or abused
+  credential cannot silently touch a player's saved games on the provider side.
 
 ### Logging
 
@@ -124,7 +128,11 @@ Out of scope:
 
 - Single instance only. Tasks and progress are process-local.
 - No range requests in v1. A client resumes at object granularity.
-- Store ingestion and cloud saves are not implemented yet.
+- GameDepot's cloud saves coordinate only between GameDepot clients. A title whose own
+  storefront also syncs saves (Ubisoft Connect, EA app, and others) has no knowledge of
+  this feature, and neither does the reverse: running both writers on the same save
+  directory is unsupported by design, not merely untested. Turn the provider's own cloud
+  saves off for any title using ours, per game.
 
 ## Disclosure
 

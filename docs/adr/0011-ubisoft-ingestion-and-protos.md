@@ -56,6 +56,13 @@ so the mapping onto `internal/depot` is close to direct.
 - Session tickets and remember-me tickets go through the same sealing as every other
   store credential (`internal/secrets`), and a ticket Ubisoft rejects flags the
   connection instead of retrying it.
+- **No Ubisoft cloud-save integration, in either direction.** The Connect client syncs
+  saved games through its own service, and that service's schema is public enough to
+  find. Reconciling two independent save histories is a different feature from the one
+  this project's phase 7 built, and a title with both writers active can lose progress
+  with nothing on either side able to tell. Out of scope: GameDepot neither reads nor
+  writes Ubisoft's save cloud, and an operator who wants GameDepot saves for a title
+  turns the provider's own sync off for it.
 - 2FA, where Ubisoft challenges, is a first-class interactive step: the challenge travels
   in a 200 response with the fields the client needs to complete it, because an error
   body's custom fields can be stripped in production.
@@ -76,6 +83,9 @@ so the mapping onto `internal/depot` is close to direct.
   and re-mint on 403, and one fetch per slice even when several files share it. Those are
   the parts most likely to drift and the parts the port must make observable in the task
   log.
+- Declining the save service also bounds what a store credential can do: it is offered
+  only to the endpoints acquisition needs, so an abused or leaked token cannot reach a
+  player's saved games on the provider side.
 
 ## Alternatives considered
 
