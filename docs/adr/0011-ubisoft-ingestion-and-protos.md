@@ -102,10 +102,13 @@ quality.
 
 | Source | License | Provenance | Use |
 | --- | --- | --- | --- |
-| `YoobieRE/ubisoft-demux-node`, `claabs/uplay-install-reverse` | MIT | hand-documented from observation | vendored as schema, with attribution |
-| `Starkka15/Optima` | GPL-3.0-or-later | independent Rust client | read for ideas; no code, including its `proto/` copies |
-| `UplayDB/Protobufs` | none | dumped from Ubisoft's `upc.exe` | do not vendor; do not take field numbers from |
-| `Haoose/UPLAY_GAME_ID` | none | hand-curated product id list | do not vendor; cross-check titles only |
+| `YoobieRE`, `claabs/uplay-install-reverse` | MIT | hand-documented | vendored |
+| `Starkka15/Optima` | GPL-3.0-or-later | Rust client | ideas only, no code |
+| `UplayDB/Protobufs` | none | dumped from `upc.exe` | do not vendor |
+| `Haoose/UPLAY_GAME_ID` | none | hand-curated ids | cross-check only |
+
+`Optima`'s own `proto/` directory derives from the MIT work above but is published under
+GPL, so it is not a source either: take the schema from the MIT originals or not at all.
 
 An unlicensed repository is all-rights-reserved by default; public is not the same as
 permissive. A schema reconstructed from Ubisoft's own binary adds a second objection on
