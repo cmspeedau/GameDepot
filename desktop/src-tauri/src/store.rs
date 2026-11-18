@@ -49,6 +49,14 @@ CREATE TABLE IF NOT EXISTS file_state (
     done        INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (version_id, path)
 );
+CREATE TABLE IF NOT EXISTS save_cursor (
+    game_id        TEXT NOT NULL,
+    slot           INTEGER NOT NULL,
+    base_seq       INTEGER NOT NULL DEFAULT 0,
+    content_hash   TEXT NOT NULL DEFAULT '',
+    updated_at     TEXT,
+    PRIMARY KEY (game_id, slot)
+);
 ";
 
 impl Store {
@@ -213,6 +221,36 @@ impl Store {
         guard.execute("DELETE FROM object_state WHERE version_id=?1", params![version_id])?;
         guard.execute("DELETE FROM file_state WHERE version_id=?1", params![version_id])?;
         guard.execute("DELETE FROM installed_version WHERE version_id=?1", params![version_id])?;
+        Ok(())
+    }
+
+    /// Last synced server sequence and content hash for a (game, slot) pair.
+    /// `(0, "")` means "never synced".
+    pub fn save_cursor(&self, game_id: &str, slot: i32) -> Result<(i32, String), StoreError> {
+        let guard = self.c()?;
+        let mut stmt = guard.prepare(
+            "SELECT base_seq, content_hash FROM save_cursor WHERE game_id=?1 AND slot=?2",
+        )?;
+        let mut rows = stmt.query(params![game_id, slot])?;
+        match rows.next()? {
+            Some(r) => Ok((r.get(0)?, r.get(1)?)),
+            None => Ok((0, String::new())),
+        }
+    }
+
+    pub fn set_save_cursor(
+        &self,
+        game_id: &str,
+        slot: i32,
+        base_seq: i32,
+        content_hash: &str,
+    ) -> Result<(), StoreError> {
+        self.c()?.execute(
+            "INSERT INTO save_cursor (game_id, slot, base_seq, content_hash, updated_at)
+             VALUES (?1, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+             ON CONFLICT(game_id, slot) DO UPDATE SET base_seq=?3, content_hash=?4, updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now')",
+            params![game_id, slot, base_seq, content_hash],
+        )?;
         Ok(())
     }
 }

@@ -57,6 +57,12 @@ pub fn expand_template(template: &str, vars: &HashMap<String, String>) -> String
 
 /// Build a `FileEntry` for one on-disk file under `key`.
 pub fn entry_from_file(key: &str, path: &Path) -> Result<FileEntry, String> {
+    Ok(entry_and_bytes(key, path)?.0)
+}
+
+/// Like `entry_from_file`, but also hands back the file bytes so an archive can be
+/// packed without a second read.
+pub fn entry_and_bytes(key: &str, path: &Path) -> Result<(FileEntry, Vec<u8>), String> {
     let mut data = Vec::new();
     std::fs::File::open(path)
         .map_err(|e| format!("open {}: {e}", path.display()))?
@@ -64,12 +70,15 @@ pub fn entry_from_file(key: &str, path: &Path) -> Result<FileEntry, String> {
         .map_err(|e| e.to_string())?;
     let mut h = Sha256::new();
     h.update(&data);
-    Ok(FileEntry {
-        key: key.to_string(),
-        size: data.len() as i64,
-        sha256: hex::encode(h.finalize()),
-        mode: file_mode(path),
-    })
+    Ok((
+        FileEntry {
+            key: key.to_string(),
+            size: data.len() as i64,
+            sha256: hex::encode(h.finalize()),
+            mode: file_mode(path),
+        },
+        data,
+    ))
 }
 
 #[cfg(unix)]
@@ -90,22 +99,34 @@ fn file_mode(_path: &Path) -> u32 {
 pub struct SaveRoot {
     pub label: String,
     pub base: std::path::PathBuf,
+    /// Walk subdirectories too. Mirrors the manifest's `recursive` flag; a false root
+    /// only contributes the files directly inside `base`.
+    pub recursive: bool,
 }
 
 /// Walk every root and collect its files. Symlinks are not followed, so a hostile
 /// save directory cannot pull files from outside the root. Returns entries sorted by
 /// key, which keeps `content_hash` reproducible.
 pub fn collect_files(roots: &[SaveRoot]) -> Result<Vec<FileEntry>, String> {
+    Ok(collect_items(roots)?
+        .into_iter()
+        .map(|(e, _)| e)
+        .collect())
+}
+
+/// Same walk as `collect_files`, but also returns each file's bytes so the caller can
+/// pack them into an archive without reading the files twice.
+pub fn collect_items(roots: &[SaveRoot]) -> Result<Vec<(FileEntry, Vec<u8>)>, String> {
     let multi = roots.len() > 1;
     let mut out = Vec::new();
     for root in roots {
         walk_root(root, multi, &mut out)?;
     }
-    out.sort_by(|a, b| a.key.cmp(&b.key));
+    out.sort_by(|a, b| a.0.key.cmp(&b.0.key));
     Ok(out)
 }
 
-fn walk_root(root: &SaveRoot, multi: bool, out: &mut Vec<FileEntry>) -> Result<(), String> {
+fn walk_root(root: &SaveRoot, multi: bool, out: &mut Vec<(FileEntry, Vec<u8>)>) -> Result<(), String> {
     let base = &root.base;
     if !base.is_dir() {
         return Err(format!("save root is not a directory: {}", base.display()));
@@ -123,14 +144,17 @@ fn walk_root(root: &SaveRoot, multi: bool, out: &mut Vec<FileEntry>) -> Result<(
             let child_rel = if rel.is_empty() { name.clone() } else { format!("{rel}/{name}") };
             let path = entry.path();
             if ft.is_dir() {
-                stack.push((path, child_rel));
+                if root.recursive {
+                    stack.push((path, child_rel));
+                }
             } else if ft.is_file() {
                 let key = if multi {
                     format!("{}/{}", root.label, child_rel)
                 } else {
                     child_rel
                 };
-                out.push(entry_from_file(&key, &path)?);
+                let (file_entry, bytes) = entry_and_bytes(&key, &path)?;
+                out.push((file_entry, bytes));
             }
         }
     }
@@ -173,6 +197,151 @@ pub fn read_archive(bytes: &[u8]) -> Result<Vec<(String, u32, Vec<u8>)>, String>
         out.push((path, mode, buf));
     }
     Ok(out)
+}
+
+/// Place pulled files back into the roots they came from. With a single root every key
+/// is relative to it; with several roots the first key segment is the root label.
+/// Keys that escape their root (`..`, absolute paths) are rejected and nothing is
+/// written for them. Files are written atomically with the stored mode.
+pub fn write_pulled(roots: &[SaveRoot], files: &[(String, u32, Vec<u8>)]) -> Result<usize, String> {
+    let multi = roots.len() > 1;
+    let mut written = 0;
+    for (key, mode, bytes) in files {
+        let (root, rel) = if multi {
+            let (label, rest) = key.split_once('/').ok_or_else(|| format!("key {key} has no root label"))?;
+            let root = roots
+                .iter()
+                .find(|r| r.label == label)
+                .ok_or_else(|| format!("unknown root label {label}"))?;
+            (root, rest.to_string())
+        } else {
+            (roots.first().ok_or("no roots")?, key.clone())
+        };
+        let target = safe_join(&root.base, &rel)?;
+        write_atomic(&target, bytes, *mode)?;
+        written += 1;
+    }
+    Ok(written)
+}
+
+fn safe_join(base: &Path, rel: &str) -> Result<std::path::PathBuf, String> {
+    if rel.is_empty() || rel.starts_with('/') {
+        return Err(format!("unsafe path {rel}"));
+    }
+    let mut p = base.to_path_buf();
+    for seg in rel.split('/') {
+        match seg {
+            "" | "." => continue,
+            ".." => return Err(format!("unsafe path {rel}")),
+            s => p.push(s),
+        }
+    }
+    Ok(p)
+}
+
+#[cfg(unix)]
+fn write_atomic(target: &Path, bytes: &[u8], mode: u32) -> Result<(), String> {
+    use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let tmp = target.with_extension(format!("tmp-{}", std::process::id()));
+    {
+        let mut f = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
+        f.write_all(bytes).map_err(|e| e.to_string())?;
+        f.sync_all().map_err(|e| e.to_string())?;
+        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(mode & 0o7777))
+            .map_err(|e| e.to_string())?;
+    }
+    std::fs::rename(&tmp, target).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn write_atomic(target: &Path, bytes: &[u8], _mode: u32) -> Result<(), String> {
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(target, bytes).map_err(|e| e.to_string())
+}
+
+/// A save-location template as the server stores it in a game's save manifest.
+#[derive(Debug, Clone)]
+pub struct SavePathTemplate {
+    /// `windows`, `linux`, `macos` or `*`.
+    pub platform: String,
+    /// `file` or `registry`. Registry paths are not collected; v1 is file-only.
+    pub kind: String,
+    /// Path template with `{user}`, `{p}`, `{appdata}` placeholders and an optional
+    /// trailing `/**` or `/*` glob.
+    pub template: String,
+    pub recursive: bool,
+}
+
+/// Expand server save-path templates into local roots.
+///
+/// - Only `file`-kind roots whose platform matches (`*` matches anything) are used.
+/// - A trailing `/**` or `/*` is stripped; the `recursive` flag already decides the walk.
+/// - `{...}` placeholders are replaced from `vars` (see `default_vars`). An unresolved
+///   placeholder is an error rather than a literal directory name, so a template that
+///   needs `{steamid}` fails loudly instead of silently collecting nothing.
+pub fn resolve_roots(
+    paths: &[SavePathTemplate],
+    current_platform: &str,
+    vars: &HashMap<String, String>,
+) -> Result<Vec<SaveRoot>, String> {
+    let mut out = Vec::new();
+    for p in paths {
+        if p.kind != "file" {
+            continue;
+        }
+        if p.platform != "*" && p.platform != current_platform {
+            continue;
+        }
+        let trimmed = p
+            .template
+            .strip_suffix("/**")
+            .or_else(|| p.template.strip_suffix("/*"))
+            .unwrap_or(&p.template);
+        let expanded = expand_template(trimmed, vars);
+        // A `{name}` left in the output was not in `vars`; treat it as an error rather
+        // than creating a directory called "{name}".
+        if let Some(start) = expanded.find('{') {
+            if let Some(end) = expanded[start..].find('}') {
+                return Err(format!(
+                    "unresolved placeholder {{{}}} in save path `{}`",
+                    &expanded[start + 1..start + end],
+                    p.template
+                ));
+            }
+        }
+        let base = std::path::PathBuf::from(&expanded);
+        let label = if out.is_empty() {
+            "root".to_string()
+        } else {
+            format!("root{}", out.len() + 1)
+        };
+        out.push(SaveRoot {
+            label,
+            base,
+            recursive: p.recursive,
+        });
+    }
+    Ok(out)
+}
+
+/// The variable set a desktop supplies for template expansion: `{user}` is the home
+/// directory, `{p}` the game's install name, `{appdata}` the platform config
+/// directory. Anything else (for example `{steamid}`) must come from the caller.
+pub fn default_vars(game_name: &str, home: &Path, appdata: &Path) -> HashMap<String, String> {
+    let mut vars = HashMap::new();
+    vars.insert("user".to_string(), home.display().to_string());
+    vars.insert("home".to_string(), home.display().to_string());
+    vars.insert("p".to_string(), game_name.to_string());
+    vars.insert("name".to_string(), game_name.to_string());
+    vars.insert("appdata".to_string(), appdata.display().to_string());
+    vars
 }
 
 #[cfg(test)]
@@ -271,7 +440,7 @@ mod tests {
         #[cfg(unix)]
         let _ = std::os::unix::fs::symlink("/etc/hostname", dir.join("link.txt"));
 
-        let roots = vec![SaveRoot { label: "r".into(), base: dir.clone() }];
+        let roots = vec![SaveRoot { label: "r".into(), base: dir.clone(), recursive: true }];
         let entries = collect_files(&roots).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].key, "a.txt");
@@ -292,8 +461,8 @@ mod tests {
         std::fs::write(d2.join("x.txt"), b"2").unwrap();
 
         let roots = vec![
-            SaveRoot { label: "rootA".into(), base: d1.clone() },
-            SaveRoot { label: "rootB".into(), base: d2.clone() },
+            SaveRoot { label: "rootA".into(), base: d1.clone(), recursive: true },
+            SaveRoot { label: "rootB".into(), base: d2.clone(), recursive: true },
         ];
         let entries = collect_files(&roots).unwrap();
         assert_eq!(entries.len(), 2);
@@ -308,7 +477,7 @@ mod tests {
 
     #[test]
     fn missing_root_is_an_error() {
-        let roots = vec![SaveRoot { label: "x".into(), base: std::path::PathBuf::from("/no/such/dir/xyz") }];
+        let roots = vec![SaveRoot { label: "x".into(), base: std::path::PathBuf::from("/no/such/dir/xyz"), recursive: true }];
         assert!(collect_files(&roots).is_err());
     }
 }

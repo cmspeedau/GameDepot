@@ -168,10 +168,11 @@ backup.
       is complete and smoke-tested against a live server (push with optimistic
       concurrency, idempotent no-op, stale-base conflict 409, per-version download,
       restore, pin, delete guards, retention window, and the save-path manifest read).
-      Desktop: contentHash matches Go byte-for-byte (golden test), template expansion,
-      tar.zstd round-trip, and a root-directory walker that collects files with relative
-      keys (single and multi-root, symlink-safe) are tested. Remaining: save-sync
-      command wiring over the API and the UI.
+      Desktop is wired end to end and verified live against the Go server: save-root
+      template resolution, per-slot sync cursor, and the four-way sync (push, pull,
+      noop, conflict with take-server and keep-mine resolutions), plus the Vue saves
+      UI. The two-device save round-trip passed. Remaining for this item: a
+      Windows/macOS path-template run and the store side below.
 - [ ] Store ingestion: GOG first, then Epic, with an encrypted connection store.
 - [ ] Metadata providers with a manual fallback.
 - [ ] Cache node for LAN and offline use (see below).

@@ -262,6 +262,30 @@ The save-location roots the server holds for the game (the user-defined manifest
     "template": "{user}/.local/share/{p}/**", "recursive": true } ] }
 ```
 
+The desktop expands a template into a local directory before collecting files:
+
+| Placeholder | Expands to |
+| --- | --- |
+| `{user}`, `{home}` | the user's home directory |
+| `{p}`, `{name}` | the game's name from the library list |
+| `{appdata}` | the platform config/data directory |
+
+On Linux this is `XDG_CONFIG_HOME`, on Windows `%APPDATA%`, on macOS
+`~/Library/Application Support`.
+
+A `/**` or `/*` suffix is stripped; `recursive` already says whether to walk
+subdirectories. Only `kind: file` roots whose platform matches the caller's (or
+`*`) are used; registry roots and other platforms are skipped. Any other
+placeholder (for example `{steamid}`, which needs a provider the desktop lacks)
+fails the save loudly rather than creating a directory named `{steamid}`.
+
+The desktop keeps a per-(game, slot) sync cursor of the last base sequence and
+content hash it agreed with the server. On sync it compares local-changed with
+server-changed and picks one of four outcomes: push (local ahead), pull (server
+ahead), noop (equal) or conflict (both moved). A conflict never auto-resolves;
+the user picks "use server" (download the head over the local files) or "keep
+mine" (push the local set over the head, keeping the previous head in history).
+
 ### `POST /api/v1/saves/slot/{gameId}/{slot}/push`
 
 Streams the archive as the request body. Headers:

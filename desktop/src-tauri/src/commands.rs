@@ -163,3 +163,141 @@ pub async fn prefix_size_for(path: String) -> Result<u64, String> {
 pub async fn runner_install_ge_proton() -> Result<runner::RunnerBuild, String> {
     runner::install_latest_ge_proton().await.map_err(|e| e.to_string())
 }
+
+// ---------- cloud saves ----------
+
+use crate::api::{SaveSlot, SaveVersion};
+use crate::save_sync;
+
+/// Resolve a game's server save manifest into the local roots a sync would touch.
+/// The UI calls this to show what is collected before syncing.
+#[derive(serde::Serialize)]
+pub struct RootInfo {
+    pub label: String,
+    pub path: String,
+    pub recursive: bool,
+    pub exists: bool,
+}
+
+#[tauri::command]
+pub async fn save_roots(state: State<'_, AppState>, game_id: String) -> Result<Vec<RootInfo>, String> {
+    let client = state.client()?;
+    let roots = save_sync::resolve_roots(&client, &game_id).await.map_err(e)?;
+    Ok(roots
+        .iter()
+        .map(|r| RootInfo {
+            label: r.label.clone(),
+            path: r.base.display().to_string(),
+            recursive: r.recursive,
+            exists: r.base.is_dir(),
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub async fn save_slots(
+    state: State<'_, AppState>,
+    game_id: Option<String>,
+) -> Result<Vec<SaveSlot>, String> {
+    state
+        .client()?
+        .list_saves(game_id.as_deref())
+        .await
+        .map_err(e)
+}
+
+#[tauri::command]
+pub async fn save_versions(
+    state: State<'_, AppState>,
+    game_id: String,
+    slot: i32,
+) -> Result<Vec<SaveVersion>, String> {
+    state.client()?.list_save_versions(&game_id, slot).await.map_err(e)
+}
+
+/// Collect this game's saves, compare with the server and push, pull or report a
+/// conflict. Pulled files are written back to their roots; the local cursor is
+/// updated only when the sync reached an agreement with the server.
+#[tauri::command]
+pub async fn save_sync_now(
+    state: State<'_, AppState>,
+    game_id: String,
+    slot: i32,
+) -> Result<save_sync::SyncSummary, String> {
+    let client = state.client()?;
+    let roots = save_sync::resolve_roots(&client, &game_id).await.map_err(e)?;
+    save_sync::sync_game(&client, &state.store, &game_id, slot, &roots)
+        .await
+        .map_err(e)
+}
+
+/// Conflict resolution: overwrite local saves with the server head.
+#[tauri::command]
+pub async fn save_take_server(
+    state: State<'_, AppState>,
+    game_id: String,
+    slot: i32,
+) -> Result<save_sync::SyncSummary, String> {
+    let client = state.client()?;
+    let roots = save_sync::resolve_roots(&client, &game_id).await.map_err(e)?;
+    save_sync::take_server(&client, &state.store, &game_id, slot, &roots)
+        .await
+        .map_err(e)
+}
+
+/// Conflict resolution: push the local set as the newest server version.
+#[tauri::command]
+pub async fn save_take_local(
+    state: State<'_, AppState>,
+    game_id: String,
+    slot: i32,
+) -> Result<save_sync::SyncSummary, String> {
+    let client = state.client()?;
+    let roots = save_sync::resolve_roots(&client, &game_id).await.map_err(e)?;
+    save_sync::take_local(&client, &state.store, &game_id, slot, &roots)
+        .await
+        .map_err(e)
+}
+
+#[tauri::command]
+pub async fn save_restore(
+    state: State<'_, AppState>,
+    game_id: String,
+    slot: i32,
+    version_id: String,
+) -> Result<SaveVersion, String> {
+    state
+        .client()?
+        .restore_save(&game_id, slot, &version_id)
+        .await
+        .map_err(e)
+}
+
+#[tauri::command]
+pub async fn save_pin(
+    state: State<'_, AppState>,
+    game_id: String,
+    slot: i32,
+    version_id: String,
+    pinned: bool,
+) -> Result<(), String> {
+    state
+        .client()?
+        .pin_save(&game_id, slot, &version_id, pinned)
+        .await
+        .map_err(e)
+}
+
+#[tauri::command]
+pub async fn save_delete_version(
+    state: State<'_, AppState>,
+    game_id: String,
+    slot: i32,
+    version_id: String,
+) -> Result<(), String> {
+    state
+        .client()?
+        .delete_save_version(&game_id, slot, &version_id)
+        .await
+        .map_err(e)
+}

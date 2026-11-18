@@ -52,7 +52,16 @@ pub fn run() {
             commands::runner_discover,
             commands::prefix_path_for,
             commands::prefix_size_for,
-            commands::runner_install_ge_proton
+            commands::runner_install_ge_proton,
+            commands::save_roots,
+            commands::save_slots,
+            commands::save_versions,
+            commands::save_sync_now,
+            commands::save_take_server,
+            commands::save_take_local,
+            commands::save_restore,
+            commands::save_pin,
+            commands::save_delete_version
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
