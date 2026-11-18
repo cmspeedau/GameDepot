@@ -236,6 +236,13 @@ func (s *Server) handleGogIngest(c *gin.Context) {
 	if platform == "" {
 		platform = "windows"
 	}
+	// Reject an unacquirable platform before starting a task that can only fail, so
+	// the operator reads the reason in the flash instead of opening a dead job.
+	if _, err := gog.ContentOS(platform); err != nil {
+		slog.InfoContext(c.Request.Context(), "gog ingest refused", "product", productID, "platform", platform, "err", err)
+		c.Redirect(http.StatusFound, "/dashboard/stores?flash="+urlEscape(flashOf(err)))
+		return
+	}
 
 	client, conn, ok := s.gogClient(c.Request.Context())
 	if !ok {

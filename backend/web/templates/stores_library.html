@@ -4,9 +4,10 @@
 <p class="text-sm text-zinc-500">No entitled games found for this account.</p>
 {{else}}
 <p class="text-sm text-zinc-400 mb-3">{{len .Games}} entitled product(s). Ingesting downloads
-  the files, then builds a release from them like any other library source. The platform
-  list is what GOG reports for the title; Linux is listed when GOG says the game has it,
-  but its builds come from a different API and are refused here.</p>
+  the files, then builds a release from them like any other library source. GOG reports
+  Linux for some titles and has no Linux depot builds for any of them, so that option is
+  shown but not selectable; ingest the Windows build and run it through the compatibility
+  tool (ADR-0010).</p>
 <table class="w-full text-sm">
   <thead><tr class="text-left text-zinc-400"><th class="py-2">Title</th><th>GOG reports</th><th>Product</th><th></th></tr></thead>
   <tbody>
@@ -25,7 +26,14 @@
           <select name="platform" class="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs">
             {{if $game.Platforms}}
               {{range $game.Platforms}}
-                <option value="{{.}}">{{.}}{{if eq . "linux"}} (no depot builds){{end}}</option>
+                {{if eq . "linux"}}
+                  {{/* GOG serves no Linux depot builds; see ADR-0010. Listed so the
+                        operator can see the title does have Linux content, and disabled
+                        so nobody starts an ingest that can only be refused. */}}
+                  <option value="linux" disabled>linux (no depot builds; use windows)</option>
+                {{else}}
+                  <option value="{{.}}">{{.}}</option>
+                {{end}}
               {{end}}
             {{else}}
               <option value="windows">windows</option>

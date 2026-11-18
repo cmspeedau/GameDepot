@@ -54,9 +54,10 @@ func TestStoreTemplatesRender(t *testing.T) {
 		"value=\"1711765822\"",
 		"/dashboard/stores/gog/ingest",
 		"name=\"_csrf\" value=\"token-abc\"",
-		`value="macos"`, `value="linux"`, `value="windows"`, // each title offers only what GOG reports
-		"(no depot builds)", // and says so for Linux
-		"name=\"force\"",    // and the re-download override the runbook describes
+		`value="macos"`, `value="windows"`, // each title offers only what GOG reports
+		`<option value="linux" disabled>`, // Linux is visible but not selectable (ADR-0010)
+		"no Linux depot builds",           // and the fragment explains why
+		"name=\"force\"",                  // and the re-download override the runbook describes
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("library fragment missing %q", want)

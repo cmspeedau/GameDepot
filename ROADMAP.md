@@ -198,11 +198,14 @@ backup.
       rather than downgraded: GOG's content system answers `Unsupported OS` for
       `linux`, and its Linux builds live on the installer downlink API and
       chunklist instead.
-      Follow-ups: one end-to-end ingest with an operator's own GOG account,
-      which is the step secure_link requires a credential for; native Linux
-      acquisition through the installer route (downlink, chunklist MD5s,
-      innoextract/`mojo`/7z unpack); and confirming Mac launch entries on that
-      first real ingest.
+      Decided against, not deferred (ADR-0010): native Linux acquisition. GOG ships a
+      Linux build as one self-extracting installer, 21.2 GB measured on The Witcher 2,
+      behind a login-gated downlink, with no cross-version dedupe and an external
+      extractor as a host dependency. Linux titles are ingested as their Windows build
+      and run through the existing compatibility tool; the picker shows Linux disabled
+      and the ingest route rejects it before starting a task.
+      Follow-ups: one end-to-end ingest with an operator's own GOG account, which is the
+      step secure_link needs a credential for, and confirming Mac launch entries on it.
 - [ ] Metadata providers with a manual fallback.
 - [ ] Cache node for LAN and offline use (see below).
 
