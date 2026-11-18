@@ -93,3 +93,28 @@ so the mapping onto `internal/depot` is close to direct.
 - `backend/proto/ubisoft/PROVENANCE.md`, `NOTICE`.
 - ADR-0009 (the archive as specification), ADR-0010 (GOG platform handling).
 - `claabs/uplay-install-reverse`, `YoobieRE/ubisoft-demux-node` (MIT schema sources).
+
+### Reference sources and what may be taken from each
+
+Ubisoft interoperability knowledge circulates in a handful of public repositories. They
+are not equally usable, and the difference is licensing and provenance rather than
+quality.
+
+| Source | License | Provenance | Use |
+| --- | --- | --- | --- |
+| `YoobieRE/ubisoft-demux-node`, `claabs/uplay-install-reverse` | MIT | hand-documented from observation | vendored as schema, with attribution |
+| `Starkka15/Optima` | GPL-3.0-or-later | independent Rust client | read for ideas; no code, including its `proto/` copies |
+| `UplayDB/Protobufs` | none | dumped from Ubisoft's `upc.exe` | do not vendor; do not take field numbers from |
+| `Haoose/UPLAY_GAME_ID` | none | hand-curated product id list | do not vendor; cross-check titles only |
+
+An unlicensed repository is all-rights-reserved by default; public is not the same as
+permissive. A schema reconstructed from Ubisoft's own binary adds a second objection on
+top of that: it is derivative of a closed-source artifact, which is precisely the
+provenance this project's AGPL choice is meant to keep out of its history. Where a
+message field is needed and upstream MIT schemas do not carry it, derive it by observing
+the live service or from an install on the operator's own machine, and record how.
+
+Verified 2026-11-18: the vendored MIT set covers every message the acquisition flow needs
+(`SignOwnershipReq/Rsp`, `OwnershipTokenReq/Rsp`, `GetBatchDownloadUrlsReq`, `UrlReq`,
+`UrlRsp`, `InitializeReq/Rsp`, the embedded `configuration` blob, and `Manifest`/`Slice`
+with `Chunk`), so the two unlicensed sources are not required for any planned work.
