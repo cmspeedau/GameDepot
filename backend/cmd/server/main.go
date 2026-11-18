@@ -38,7 +38,7 @@ func main() {
 	case "error":
 		level = slog.LevelError
 	}
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})))
+	slog.SetDefault(slog.New(server.NewContextHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}))))
 
 	ctx := context.Background()
 

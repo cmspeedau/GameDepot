@@ -133,8 +133,14 @@ then relaunch after a client restart.
 
 ## Phase 6: operations
 
-- [ ] Structured logs with request ids.
-- [ ] Health and readiness endpoints.
+- [x] Structured logs with request ids. Gin middleware assigns an `X-Request-Id` (new
+      UUID or client supplied) into the request context, access lines are structured JSON
+      `http_request` records carrying `method`, `path`, `status`, `duration_ms` and
+      `request_id`, and the slog default handler adds the id from context. Covered by
+      unit tests; verified live.
+- [x] Health and readiness endpoints. `GET /api/v1/health` is liveness (`204`, no
+      database check); `GET /api/v1/ready` is readiness (database ping, `200`/`503`).
+      Verified live.
 - [ ] Integrity and cleanup tasks on a schedule.
 - [ ] Backup and restore runbook tested against a real dump.
 - [ ] Single image build with embedded assets and migrations.

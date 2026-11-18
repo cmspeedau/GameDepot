@@ -83,8 +83,16 @@ For a patch or minor release within the compatible line:
 
 ## Health and monitoring
 
-- `GET /api/v1/health` returns 200 when the database and depot root are reachable. The depot also exposes `GET /api/v1/depot/healthcheck` for a lighter check.
-- Readiness should also check the database. Use the container healthcheck once it exists.
+- `GET /api/v1/health` is the liveness probe and returns `204 No Content` without
+  touching the database. Use it for container liveness and orchestrator liveness gates.
+- `GET /api/v1/ready` is the readiness probe and returns `200 OK` when the database
+  answers, `503` with a JSON error body when it does not. Point load balancer and
+  orchestrator readiness checks here.
+- The depot also exposes `GET /api/v1/depot/healthcheck` for a lighter check.
+- Every request gets an `X-Request-Id` response header (a new UUID when the client does
+  not send one) and the value is placed in the request context; structured logs pick it
+  up as `request_id`. Access lines are JSON `http_request` records with `method`, `path`,
+  `status`, `duration_ms` and `request_id`.
 - Logs are JSON on stdout. Ship them with whatever the host provides; no log file is
   written.
 - Watch disk space on `DATA` first. Chunk objects are append-only and deduplicated, but

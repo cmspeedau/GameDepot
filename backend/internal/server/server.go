@@ -61,6 +61,8 @@ func (s *Server) Handler() http.Handler {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(RequestID())
+	r.Use(AccessLog())
 
 	// Static assets.
 	r.StaticFS("/static", http.FS(s.static))
@@ -69,8 +71,10 @@ func (s *Server) Handler() http.Handler {
 	r.NoRoute(s.handleNotFound)
 	r.NoMethod(s.handleNotFound)
 
-	// Health.
+	// Health. Liveness is cheap and does not touch the database; readiness probes
+	// the database and is what a load balancer or orchestrator should watch.
 	r.GET("/api/v1/health", s.handleHealth)
+	r.GET("/api/v1/ready", s.handleReady)
 
 	// Setup and auth.
 	r.GET("/setup", s.handleSetupPage)
@@ -151,11 +155,16 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) handleHealth(c *gin.Context) {
+	c.Status(http.StatusNoContent)
+}
+
+// handleReady reports readiness: the process is up and the database answers.
+func (s *Server) handleReady(c *gin.Context) {
 	if err := s.pool.Ping(c.Request.Context()); err != nil {
-		c.JSON(503, gin.H{"error": gin.H{"code": "unavailable", "message": "database unreachable"}})
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"code": "unavailable", "message": "database unreachable"}})
 		return
 	}
-	c.Status(204)
+	c.Status(http.StatusOK)
 }
 
 func (s *Server) render(c *gin.Context, name string, data gin.H) {
