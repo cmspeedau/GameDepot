@@ -207,7 +207,7 @@ with any other installation is promised.
 | Catalog | `games`, `companies`, `game_companies`, `tags`, `game_tags`, `game_versions`, `launches`, `collections`, `collection_entries` |
 | Content | `objects`, `releases`, `libraries` |
 | Player | `playtime`, `saves`, `save_versions` (phase 7) |
-| System | `tasks`, `settings`, `store_connections` (phase 7) |
+| System | `tasks`, `settings`, `store_connections` (phase 7), `runner_recipes` |
 
 Conventions:
 
@@ -385,6 +385,10 @@ Tauri 2 with a Rust core, written for this project.
 - Token storage uses the OS keyring. The SQLite database holds install state only, never
   credentials.
 - Download concurrency defaults to four objects and is configurable.
+- Every release declares a launch posture, `direct` or `store_client`, in its runner
+  recipe. `store_client` means the provider's own storefront starts the game, so
+  entitlement stays the provider's answer; this project never stubs or replaces a
+  provider loader (ADR-0012).
 - A partial install is never launched: the version is marked ready only after every file
   verifies.
 
@@ -452,6 +456,9 @@ directory or a malformed `EXTERNAL_URL` is fatal with a specific message.
 
 - Single instance only. Tasks and progress are process-local.
 - No range requests in v1; object granularity is the resume unit.
-- v1 launches native processes only. Emulator and compatibility-tool helpers are v2.
+- Launch posture, runner selection and store-client handoff are specified in ADR-0012 and
+  mostly not built: the desktop discovers umu and Proton-GE builds and can address a
+  prefix, but it does not read the recipe endpoint, no admin can create a recipe without
+  SQL, and handoff's process tracking does not exist. Emulator helpers remain v2.
 - Store ingestion and cloud saves arrive in phase 7.
 - Windows and Linux are the first desktop targets. macOS is not tested.

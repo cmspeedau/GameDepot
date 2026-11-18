@@ -112,18 +112,6 @@ required version rather than failing on an individual request.
 { "id": "<uuid>", "username": "alice", "displayName": "Alice" }
 ```
 
-### `GET /api/v1/settings`
-
-Settings the client needs:
-
-```json
-{
-  "downloadConcurrency": 4,
-  "chunkSize": 4194304,
-  "features": { "collections": true, "playtime": true, "saves": false }
-}
-```
-
 ## Library
 
 ### `GET /api/v1/library`
@@ -159,6 +147,49 @@ Full game record.
   }
 ]
 ```
+
+### `GET /api/v1/games/{id}/recipe`
+
+The runner recipe for a game, when the operator has recorded one: how this title is
+expected to start, which compatibility runner it wants, and how well it is known to work.
+Add `?versionId=<id>` for a release-specific recipe; without it the game-level recipe
+applies. `404` with `{"code":"not_found"}` when none exists, which is the normal case and
+not an error - a game with no recipe is launched by the client's own defaults.
+
+```json
+{
+  "id": "<uuid>",
+  "gameId": "<uuid>",
+  "versionId": "",
+  "profile": {
+    "launch": {
+      "mode": "store_client",
+      "store": "uplay",
+      "handler": "uplay://launch/{app}/0",
+      "requires": ["client_installed", "client_signed_in"]
+    },
+    "runner": { "kind": "umu", "build": "GE-Proton9-27" },
+    "env": {}
+  },
+  "source": "curated",
+  "compatibility": "untested",
+  "createdAt": "2026-11-18T09:30:00Z",
+  "updatedAt": "2026-11-18T09:30:00Z"
+}
+```
+
+`launch.mode` is `direct` (the file tree starts on its own, natively or through umu) or
+`store_client` (the provider's own client must start it, so entitlement stays the
+provider's answer - see ADR-0012). `source` is `curated` or `observed`. `compatibility` is
+`untested`, `works`, `works_with_tweaks` or `broken`, and is only ever set from a real
+attempt on a real prefix.
+
+Two limits to know, both current rather than intended. `profile` is stored as an opaque
+document: the shape above is the agreed one (ADR-0012) but the server does not validate
+keys, and an unreadable profile is served as `null` rather than failing the request. And
+there is no write path yet - recipes are created by direct SQL today, and the desktop does
+not yet call this endpoint. The admin form and the client consumption are tracked in the
+roadmap.
 
 ### `GET /api/v1/releases/{versionId}`
 
@@ -296,9 +327,9 @@ Streams the archive as the request body. Headers:
 
 Response is the created version. Outcomes:
 
-- `200` with the version — a new head was created.
-- `200` with `{"noop":true,"headVersionId":...}` — the content already equals the head.
-- `409` with `{"error":{"code":"conflict"},"headSeq":n,"headVersionId":...}` — the head
+- `200` with the version: a new head was created.
+- `200` with `{"noop":true,"headVersionId":...}`: the content already equals the head.
+- `409` with `{"error":{"code":"conflict"},"headSeq":n,"headVersionId":...}`: the head
   moved past the base and content differs; pull or rebase before pushing.
 
 ### `GET /api/v1/saves/slot/{gameId}/{slot}/download[?seq=n]`

@@ -104,6 +104,19 @@ Out of scope:
   GameDepot does not read or write Ubisoft cloud saves, so a stolen or abused
   credential cannot silently touch a player's saved games on the provider side.
 
+### Launch and DRM
+
+- No protection is circumvented: no provider loader is replaced or stubbed, no session
+  ticket is replayed or forged, and no ownership answer is emulated locally. A depot copy
+  is started as it is, or the provider's own client starts it (ADR-0012).
+- Provider loader files that arrived inside a game travel as ordinary game files,
+  verified and installed like any other byte. The node never authors, downloads or ships
+  such a file, and never ships a substitute.
+- Store sign-in stays interactive: the client signs in inside its own prefix, so no
+  provider password is ever stored on the node.
+- Files written into a prefix to register an install are limited to what the client
+  legitimately created during its own install of that title.
+
 ### Logging
 
 - Credentials, tokens, cookies, signed URLs and release keys are never logged.

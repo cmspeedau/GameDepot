@@ -210,6 +210,11 @@ backup.
       and the ingest route rejects it before starting a task.
       Follow-ups: one end-to-end ingest with an operator's own GOG account, which is the
       step secure_link needs a credential for, and confirming Mac launch entries on it.
+- [ ] Runner recipes made real (ADR-0012). The table and `GET /api/v1/games/{id}/recipe`
+      already exist, and nothing uses them: define the `profile` shape on the server
+      instead of serving an unvalidated blob, give admins a create/edit form on the game
+      page, have the desktop read the recipe before it launches, and record
+      `compatibility` from a real attempt rather than leaving everything `untested`.
 - [ ] Metadata providers with a manual fallback.
 - [ ] Cache node for LAN and offline use (see below).
 
@@ -221,8 +226,15 @@ between two devices.
 Deliberately deferred past the first release. These are scoped for v2, not the v1
 phases above.
 
-- [ ] Emulator and compatibility-tool launch helpers. v1 launches native processes
-      only; emulator selection, prefixes and per-tool configuration land in v2.
+- [ ] Store-client handoff and compatibility-tool launch helpers (ADR-0012). v1 plays
+      `direct` releases: native processes, or a Windows title through umu with a
+      discovered Proton build. Starting a `store_client` release needs the rest, and it
+      is v2 because each piece is provider research rather than plumbing: installing and
+      registering the storefront in the title's prefix, writing install records derived
+      from a legitimate install (never a dumped layout), launching through the client's
+      own handler, and tracking the real game process so Stop and playtime are attributed
+      to it instead of to the storefront. Emulator selection and per-tool configuration
+      land here too.
 - [ ] Move the release chunk size from 4 MiB to 1 MiB (or content-defined chunking),
       per the revisit trigger in
       [`docs/adr/0008-chunk-size.md`](docs/adr/0008-chunk-size.md). This is a
@@ -230,6 +242,8 @@ phases above.
 - [ ] Serve the desktop client from the server (see below).
 
 Exit criteria for v2: a title launches through a chosen emulator or compatibility tool,
+one `store_client` title plays from a depot copy with its storefront's own entitlement
+check answering, and that session reports Stop and playtime against the game process,
 and new releases build at the smaller chunk size with cross-version reuse measurable.
 
 ### Desktop client served by the server
@@ -317,14 +331,14 @@ because they shape the cache and save-sync work:
   the mesh forces its traffic through a public relay. Read the path from the daemon
   (`CurAddr`/`Relay` in Tailscale, the relayed flag in NetBird) and treat relayed like
   metered: background chunk transfer pauses, saves and metadata continue. With plain
-  WireGuard there is no daemon to ask — measure RTT and throughput instead, as below.
+  WireGuard there is no daemon to ask, so measure RTT and throughput instead, as below.
 - **Parallel endpoint probe.** Qualify LAN and remote together with a few hundred
   milliseconds per endpoint and take the first healthy answer, instead of falling back
   serially and waiting out a TCP timeout when a device leaves home Wi-Fi.
 
 Bulk transfer belongs on a direct WireGuard path. An outbound HTTPS tunnel is a valid
 access route for the dashboard and small metadata behind CGNAT, but it is one
-multiplexed TCP stream capped by the relay host's uplink — not a substitute for a direct
+multiplexed TCP stream capped by the relay host's uplink, not a substitute for a direct
 path when moving depot objects.
 
 ### WireGuard: don't bundle it (decided)
@@ -338,14 +352,14 @@ rejected, not deferred.
 
 GameDepot consumes the existing network instead of building one:
 
-- Endpoints are URLs — a LAN IP, a WireGuard address, a mesh DNS name — and the client
+- Endpoints are URLs (a LAN IP, a WireGuard address, a mesh DNS name) and the client
   stores several and races them. It never creates a tunnel, holds a peer key, or touches
   routing.
 - Keys, peers and NAT traversal stay with the operator's stack.
 - The path policy from the mesh section still applies, but plain WireGuard has no daemon
-  API to ask: no `Relay` field, no `CurAddr`. Detect empirically instead — RTT and
+  API to ask: no `Relay` field, no `CurAddr`. Detect empirically instead: RTT and
   first-chunk throughput against the endpoint, plus a per-endpoint "treat as metered"
-  switch — because a WireGuard endpoint on a VPS is a relay even when the tunnel itself
+  switch, because a WireGuard endpoint on a VPS is a relay even when the tunnel itself
   is direct and the OS reports the interface as ordinary Ethernet.
 - Documentation should cover wg-easy, OPNsense and a single VPS peer, not a control
   plane.
@@ -354,6 +368,6 @@ A counterexample worth watching: Drop, the closest comparable project, embeds Ta
 its Tauri app (`desktop/src-tauri/tailscale`) instead of assuming the host already runs a
 mesh. That changes what users come to expect, even if it is more software to ship.
 
-If a self-contained direct path ever becomes a hard requirement — no external stack and
-no public endpoint — QUIC with mutual TLS is a cheaper answer than embedding WireGuard:
+If a self-contained direct path ever becomes a hard requirement (no external stack and
+no public endpoint), QUIC with mutual TLS is a cheaper answer than embedding WireGuard:
 no TUN, no root, and connection IDs survive an address change.

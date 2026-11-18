@@ -17,5 +17,6 @@ old one instead of rewriting history.
 | [0009](0009-legacy-archive-as-spec.md) | The archived GameDepot is our own history, not a third party | Accepted |
 | [0010](0010-gog-platform-handling.md) | GOG platform handling; Linux builds refused, not downgraded | Accepted |
 | [0011](0011-ubisoft-ingestion-and-protos.md) | Ubisoft ingestion, and the vendored protocol schemas | Accepted |
+| [0012](0012-launch-posture-and-drm.md) | Launch posture and DRM: no circumvention, two modes | Accepted |
 
 New records start from `template.md`.
