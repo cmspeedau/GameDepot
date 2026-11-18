@@ -30,6 +30,10 @@ This project is independent by construction, and that has to stay true in the co
   acceptable. Record anything unusual in `NOTICE`.
 - If code is ever copied from an AGPL project, that code stays AGPL and attribution must
   be added to `NOTICE`. The simplest rule is not to copy.
+- "Another project" means one this project does not own. `cmspeedau/GameDepot-legacy`,
+  the archived predecessor of this repository, is its own history: its provider
+  behaviour may be reused as a specification and its recorded payloads as test data,
+  implemented in Go. See ADR-0009.
 
 ## Layout
 

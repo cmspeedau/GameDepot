@@ -20,6 +20,12 @@ type Config struct {
 	// Maintenance intervals for scheduled jobs. Zero disables the loop.
 	IntegrityInterval time.Duration
 	CleanupInterval   time.Duration
+
+	// Store ingestion (phase 7). StoreEnabled gates the provider routes;
+	// CredentialKey is the raw GAMEDEPOT_CREDENTIAL_KEY value used to seal stored
+	// store credentials, empty when unset.
+	StoreEnabled  bool
+	CredentialKey string
 }
 
 func Load() (Config, error) {
@@ -72,6 +78,20 @@ func Load() (Config, error) {
 			return c, fmt.Errorf("invalid GAMEDEPOT_CLEANUP_INTERVAL: %w", err)
 		}
 		c.CleanupInterval = d
+	}
+	if v := os.Getenv("GAMEDEPOT_STORE"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return c, fmt.Errorf("invalid GAMEDEPOT_STORE: %w", err)
+		}
+		c.StoreEnabled = b
+	}
+	c.CredentialKey = strings.TrimSpace(os.Getenv("GAMEDEPOT_CREDENTIAL_KEY"))
+
+	// Store features cannot run without a sealing key: credentials would have to be
+	// stored in plaintext. Fail at boot rather than at the first connection save.
+	if c.StoreEnabled && c.CredentialKey == "" {
+		return c, fmt.Errorf("GAMEDEPOT_STORE requires GAMEDEPOT_CREDENTIAL_KEY (32 bytes, hex or base64)")
 	}
 
 	if c.DatabaseURL == "" {

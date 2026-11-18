@@ -249,6 +249,32 @@ type Setting struct {
 	UpdatedAt pgtype.Timestamptz
 }
 
+type StoreConnection struct {
+	ID           pgtype.UUID
+	Provider     string
+	AccountLabel pgtype.Text
+	AccountID    pgtype.Text
+	AccessToken  string
+	RefreshToken pgtype.Text
+	ExpiresAt    pgtype.Timestamptz
+	Status       string
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+}
+
+type StoreProduct struct {
+	ID                pgtype.UUID
+	Provider          string
+	ProductID         string
+	GameID            pgtype.UUID
+	Title             string
+	Platform          string
+	LastBuild         pgtype.Text
+	LastReleaseDigest pgtype.Text
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
 type Tag struct {
 	ID   pgtype.UUID
 	Slug string

@@ -14,5 +14,6 @@ old one instead of rewriting history.
 | [0006](0006-desktop-client.md) | Desktop client: Tauri with Vue 3 and Vite | Accepted |
 | [0007](0007-auth-model.md) | Auth model: sessions and pairing tokens | Accepted |
 | [0008](0008-chunk-size.md) | Chunk size, 4 MiB for v1 | Accepted |
+| [0009](0009-legacy-archive-as-spec.md) | The archived GameDepot is our own history, not a third party | Accepted |
 
 New records start from `template.md`.

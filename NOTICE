@@ -25,6 +25,15 @@ Contributors must not copy code from another project into this repository. If co
 ever copied from an AGPL project, it remains AGPL and its attribution must be added
 here. See `AGENT.md`.
 
+## Lineage
+
+The GOG and Epic provider adapters under `backend/internal/store/` reimplement behaviour
+worked out in `cmspeedau/GameDepot-legacy`, this project's own archived predecessor
+(AGPL-3.0-or-later, same author). That archive is this project's history rather than a
+third party, and its provider tests supply recorded payload shapes used in the Go tests.
+The code is written in Go against this project's depot format; none of the legacy
+manifest, chunking or data-plane layers were carried over. See ADR-0009.
+
 ## Third-party components
 
 Bundled or linked dependencies keep their own licenses. Notably:
