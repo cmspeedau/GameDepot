@@ -16,5 +16,6 @@ old one instead of rewriting history.
 | [0008](0008-chunk-size.md) | Chunk size, 4 MiB for v1 | Accepted |
 | [0009](0009-legacy-archive-as-spec.md) | The archived GameDepot is our own history, not a third party | Accepted |
 | [0010](0010-gog-platform-handling.md) | GOG platform handling; Linux builds refused, not downgraded | Accepted |
+| [0011](0011-ubisoft-ingestion-and-protos.md) | Ubisoft ingestion, and the vendored protocol schemas | Accepted |
 
 New records start from `template.md`.

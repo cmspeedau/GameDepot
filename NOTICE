@@ -36,6 +36,14 @@ manifest, chunking or data-plane layers were carried over. See ADR-0009.
 
 ## Third-party components
 
+`backend/proto/ubisoft/*.proto` are protocol schema files taken from two
+reverse-engineering projects, `claabs/uplay-install-reverse` and
+`YoobieRE/ubisoft-demux-node`, both MIT-licensed. They define Ubisoft Connect's
+install-manifest and demux socket wire formats; field numbers are the wire contract, so
+the files are kept byte-identical to upstream and the Go import paths are supplied at
+generation time. `backend/internal/proto/ubi/*.pb.go` is generated from them.
+See `backend/proto/ubisoft/PROVENANCE.md` and ADR-0011.
+
 Bundled or linked dependencies keep their own licenses. Notably:
 
 - Vue, Vite, vue-router and shadcn-vue components: MIT.
