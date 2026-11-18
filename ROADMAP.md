@@ -210,6 +210,13 @@ backup.
       and the ingest route rejects it before starting a task.
       Follow-ups: one end-to-end ingest with an operator's own GOG account, which is the
       step secure_link needs a credential for, and confirming Mac launch entries on it.
+      Ubisoft is in progress: the install-manifest decode (fixed 356-byte header, framing
+      sniffed from magic across zstd, gzip, zlib and raw deflate, and a candidate accepted
+      only when it yields chunks that carry files) and the download plan (required chunks
+      plus the wanted language, absolute and traversal paths refused, the empirical
+      slice-directory derivation pinned by worked example, all-zero offsets read as
+      sequential, shared slices fetched once) are done with 25 tests. Remaining: the demux
+      socket client, session auth, and the configuration-YAML launch documents.
 - [ ] Runner recipes made real (ADR-0012). The table and `GET /api/v1/games/{id}/recipe`
       already exist, and nothing uses them: define the `profile` shape on the server
       instead of serving an unvalidated blob, give admins a create/edit form on the game

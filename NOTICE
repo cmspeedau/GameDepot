@@ -52,6 +52,8 @@ Bundled or linked dependencies keep their own licenses. Notably:
 - HTMX: BSD 2-Clause.
 - Tauri: Apache-2.0 or MIT.
 - The Go standard library and Gin: BSD 3-Clause and MIT respectively.
+- `github.com/klauspost/compress` (MIT), for the zstd framing Ubisoft's modern install
+  manifests and slices use; Go's standard library has no zstd decoder.
 - The Rust crates used by the desktop client: as declared in their `Cargo.toml` files.
 
 Run `go-licenses` or `cargo about` (once configured) for the full dependency list of a
