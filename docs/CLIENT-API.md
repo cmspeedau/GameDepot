@@ -90,6 +90,20 @@ Authorization: Bearer <token>
 A missing header is 401. An unknown or revoked token is 401. A valid token without the
 required scope is 403.
 
+## Server version
+
+### `GET /api/v1/version`
+
+Unauthenticated. Reports the server build for upgrade and compatibility checks:
+
+```json
+{ "version": "0.1.0" }
+```
+
+Clients compare against the version they were built for and the release notes shipped
+with the server. A client that needs a newer schema refuses to sync and shows the
+required version rather than failing on an individual request.
+
 ## Account
 
 ### `GET /api/v1/me`

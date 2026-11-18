@@ -16,6 +16,7 @@ import (
 	"github.com/cmspeedau/gamedepot/internal/auth"
 	"github.com/cmspeedau/gamedepot/internal/config"
 	db "github.com/cmspeedau/gamedepot/internal/database/db"
+	"github.com/cmspeedau/gamedepot/internal/version"
 	"github.com/cmspeedau/gamedepot/internal/tasks"
 	"github.com/cmspeedau/gamedepot/web"
 )
@@ -127,6 +128,7 @@ func (s *Server) Handler() http.Handler {
 
 	// Client API (JSON).
 	api := r.Group("/api/v1")
+	api.GET("/version", s.handleVersion)
 	api.POST("/pairing/initiate", s.handlePairingInitiate)
 	api.POST("/pairing/claim", s.handlePairingClaim)
 	api.GET("/me", s.requireBearer(s.handleMe))
@@ -156,6 +158,11 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) handleHealth(c *gin.Context) {
 	c.Status(http.StatusNoContent)
+}
+
+// handleVersion reports the server build version for upgrade verification.
+func (s *Server) handleVersion(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"version": version.Version})
 }
 
 // handleReady reports readiness: the process is up and the database answers.

@@ -80,6 +80,9 @@ For a patch or minor release within the compatible line:
   which is the default in development. In production, run `gamedepot migrate` before
   swapping the binary, or set the variable true for the first boot.
 - A failed migration stops the process. There is no half-applied boot.
+- After the new process starts, confirm `GET /api/v1/version` reports the version you
+  deployed and `GET /api/v1/ready` returns `200`. The boot log line `listening` carries
+  the same version, so the log and the endpoint cannot drift apart.
 
 ## Health and monitoring
 

@@ -19,6 +19,7 @@ import (
 	"github.com/cmspeedau/gamedepot/internal/config"
 	"github.com/cmspeedau/gamedepot/internal/database"
 	"github.com/cmspeedau/gamedepot/internal/server"
+	"github.com/cmspeedau/gamedepot/internal/version"
 	gamedepot "github.com/cmspeedau/gamedepot/sql"
 )
 
@@ -107,7 +108,7 @@ func main() {
 	}
 
 	go func() {
-		slog.Info("listening", "port", cfg.Port, "external", cfg.ExternalURL)
+		slog.Info("listening", "port", cfg.Port, "external", cfg.ExternalURL, "version", version.Version)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("listen", "err", err)
 			os.Exit(1)

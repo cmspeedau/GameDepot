@@ -115,3 +115,22 @@ func TestReadyReturns503WhenDatabaseUnreachable(t *testing.T) {
 		t.Fatalf("ready status = %d, want 503 when database unreachable", w.Code)
 	}
 }
+
+func TestVersionReturnsBuildVersion(t *testing.T) {
+	s := &Server{}
+	r := gin.New()
+	r.GET("/api/v1/version", s.handleVersion)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/version", nil)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("version status = %d, want 200", w.Code)
+	}
+	var rec map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &rec); err != nil {
+		t.Fatalf("version body is not JSON: %v (%q)", err, w.Body.String())
+	}
+	if got := rec["version"]; got != "0.1.0" {
+		t.Fatalf("version = %v, want 0.1.0", got)
+	}
+}

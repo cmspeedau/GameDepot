@@ -141,6 +141,10 @@ then relaunch after a client restart.
 - [x] Health and readiness endpoints. `GET /api/v1/health` is liveness (`204`, no
       database check); `GET /api/v1/ready` is readiness (database ping, `200`/`503`).
       Verified live.
+- [x] Upgrade procedure and version reporting. `GET /api/v1/version` reports the build
+      (`internal/version`, settable at link time); the boot log carries the same value.
+      Upgrade runbook in `docs/OPERATIONS.md` now includes the post-swap version and
+      readiness checks.
 - [ ] Integrity and cleanup tasks on a schedule.
 - [x] Backup and restore runbook tested against a real dump. `pg_dump --format=custom`
       of a migrated database restored cleanly into a fresh database with all six goose
@@ -148,8 +152,6 @@ then relaunch after a client restart.
 - [x] Single image build with embedded assets and migrations. `docker build -f
       deploy/Dockerfile .` completes; the binary embeds the dashboard assets via
       `go:embed` and migrations ship in the module, and the image applies them on boot.
-- [ ] Upgrade procedure and version reporting.
-- [ ] Upgrade procedure and version reporting.
 
 Exit criteria: a fresh host runs from compose, survives a restart and restores from
 backup.
