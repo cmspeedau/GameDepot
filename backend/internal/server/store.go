@@ -17,6 +17,7 @@ import (
 	db "github.com/cmspeedau/gamedepot/internal/database/db"
 	"github.com/cmspeedau/gamedepot/internal/ingest"
 	"github.com/cmspeedau/gamedepot/internal/store"
+	"github.com/cmspeedau/gamedepot/internal/store/epic"
 	"github.com/cmspeedau/gamedepot/internal/store/gog"
 	"github.com/cmspeedau/gamedepot/internal/tasks"
 )
@@ -84,9 +85,10 @@ func (s *Server) handleStoresPage(c *gin.Context) {
 		views = append(views, maskConnection(row))
 	}
 	s.render(c, "stores.html", gin.H{
-		"Title":        "Store connections",
-		"Connections":  views,
-		"AuthorizeURL": gog.AuthorizeURL(),
+		"Title":            "Store connections",
+		"Connections":      views,
+		"AuthorizeURL":     gog.AuthorizeURL(),
+		"EpicAuthorizeURL": epic.AuthorizeURL(),
 	})
 }
 
@@ -115,27 +117,57 @@ func (s *Server) handleGogConnect(c *gin.Context) {
 }
 
 func (s *Server) saveGogConnection(ctx context.Context, tokens gog.Tokens) error {
-	sealedAccess, err := s.secrets.Seal(tokens.AccessToken)
+	return s.saveProviderConnection(ctx, "gog", "GOG account", tokens.AccountID,
+		tokens.AccessToken, tokens.RefreshToken, time.Duration(tokens.ExpiresIn)*time.Second)
+}
+
+// handleEpicConnect exchanges a pasted code from Epic's redirect page for a session.
+func (s *Server) handleEpicConnect(c *gin.Context) {
+	if !s.storeEnabled(c) {
+		return
+	}
+	code := c.PostForm("code")
+	if strings.TrimSpace(code) == "" {
+		c.Redirect(http.StatusFound, "/dashboard/stores?flash=paste+the+code")
+		return
+	}
+	tokens, err := epic.ExchangeCode(c.Request.Context(), s.epicConfig(), code)
 	if err != nil {
-		return err
+		slog.WarnContext(c.Request.Context(), "epic connect failed", "err", err)
+		c.Redirect(http.StatusFound, "/dashboard/stores?flash="+urlEscape(flashOf(err)))
+		return
 	}
-	sealedRefresh := ""
-	if tokens.RefreshToken != "" {
-		if sealedRefresh, err = s.secrets.Seal(tokens.RefreshToken); err != nil {
-			return err
+	label := "Epic account"
+	if err := s.saveProviderConnection(c.Request.Context(), "epic", label, tokens.AccountID,
+		tokens.AccessToken, tokens.RefreshToken, time.Duration(tokens.ExpiresIn)*time.Second); err != nil {
+		slog.ErrorContext(c.Request.Context(), "epic connection save", "err", err)
+		c.Redirect(http.StatusFound, "/dashboard/stores?flash=save+failed")
+		return
+	}
+	c.Redirect(http.StatusFound, "/dashboard/stores?flash=connected")
+}
+
+// handleEpicLibrary lists the account's entitled products. Epic titles are listed but
+// not ingested: the file list of a build is a binary manifest this project cannot yet
+// decode, and the page says so instead of starting a download that cannot finish.
+func (s *Server) handleEpicLibrary(c *gin.Context) {
+	if !s.storeEnabled(c) {
+		return
+	}
+	client, _, ok := s.epicClient(c.Request.Context())
+	if !ok {
+		s.render(c, "stores_epic.html", gin.H{"Error": "No Epic connection. Connect an account first."})
+		return
+	}
+	games, err := client.Library(c.Request.Context())
+	if err != nil {
+		if errors.Is(err, store.ErrReauth) {
+			s.markStoreConnectionError(c.Request.Context(), "epic")
 		}
+		s.render(c, "stores_epic.html", gin.H{"Error": "Epic library request failed: " + err.Error()})
+		return
 	}
-	_, err = s.db.CreateStoreConnection(ctx, db.CreateStoreConnectionParams{
-		ID:           pgtype.UUID{Bytes: uuid.New(), Valid: true},
-		Provider:     "gog",
-		AccountLabel: pgtype.Text{String: "GOG account", Valid: true},
-		AccountID:    pgtype.Text{String: tokens.AccountID, Valid: tokens.AccountID != ""},
-		AccessToken:  sealedAccess,
-		RefreshToken: pgtype.Text{String: sealedRefresh, Valid: sealedRefresh != ""},
-		ExpiresAt:    pgtype.Timestamptz{Time: time.Now().Add(time.Duration(tokens.ExpiresIn) * time.Second), Valid: true},
-		Status:       "active",
-	})
-	return err
+	s.render(c, "stores_epic.html", gin.H{"Games": games})
 }
 
 // handleStoreDisconnect removes a stored connection. Tokens are dropped, not just
@@ -254,59 +286,179 @@ func (s *Server) gogConfig() gog.Config {
 	return cfg
 }
 
-// gogClient returns a usable GOG client for the instance's newest active connection,
-// refreshing the stored token when it is close to expiry. Providers rotate refresh
-// tokens on use, so a refresh is written straight back.
-func (s *Server) gogClient(ctx context.Context) (*gog.Client, db.StoreConnection, bool) {
-	conn, err := s.db.NewestActiveStoreConnection(ctx, "gog")
+// session is one provider's decrypted credentials plus its stored row.
+type session struct {
+	Conn    db.StoreConnection
+	Access  string
+	Refresh string
+}
+
+// renewedTokens is what a provider hands back after rotating its pair.
+type renewedTokens struct {
+	Access    string
+	Refresh   string
+	ExpiresIn time.Duration
+}
+
+// providerSession loads the newest active connection for a provider and opens its
+// sealed credentials. A value that will not decrypt means the deployment key changed:
+// the connection is flagged rather than treated as plaintext.
+func (s *Server) providerSession(ctx context.Context, provider string) (session, bool) {
+	conn, err := s.db.NewestActiveStoreConnection(ctx, provider)
 	if err != nil {
-		return nil, db.StoreConnection{}, false
+		return session{}, false
 	}
 	access, err := s.secrets.Open(conn.AccessToken)
 	if err != nil {
-		slog.WarnContext(ctx, "gog access token undecryptable; the credential key changed?", "err", err)
-		s.markStoreConnectionError(ctx, "gog")
+		slog.WarnContext(ctx, "stored access token undecryptable; the credential key changed?",
+			"provider", provider, "err", err)
+		s.markStoreConnectionError(ctx, provider)
+		return session{}, false
+	}
+	out := session{Conn: conn, Access: access}
+	if conn.RefreshToken.Valid {
+		refresh, err := s.secrets.Open(conn.RefreshToken.String)
+		if err != nil {
+			slog.WarnContext(ctx, "stored refresh token undecryptable", "provider", provider, "err", err)
+			s.markStoreConnectionError(ctx, provider)
+			return session{}, false
+		}
+		out.Refresh = refresh
+	}
+	return out, true
+}
+
+// renewIfExpiring renews a session whose access token is close to expiry and persists
+// the rotated pair. Providers rotate refresh tokens on use, so writing both values back
+// is not optional: a dropped rotation breaks the account next time.
+//
+// A transient provider failure is deliberately not treated as a dead credential; the
+// existing access token may still work, and retrying a rate-limited endpoint in a loop
+// is worse than letting the next call fail visibly.
+func (s *Server) renewIfExpiring(ctx context.Context, sess session, renew func(ctx context.Context) (renewedTokens, error)) (renewedTokens, bool, bool) {
+	needsRefresh := sess.Conn.ExpiresAt.Valid && time.Until(sess.Conn.ExpiresAt.Time) < 10*time.Minute && sess.Refresh != ""
+	if !needsRefresh {
+		return renewedTokens{}, false, false
+	}
+	tokens, err := renew(ctx)
+	if err != nil {
+		slog.WarnContext(ctx, "token refresh failed", "provider", sess.Conn.Provider, "err", err)
+		if errors.Is(err, store.ErrReauth) {
+			s.markStoreConnectionError(ctx, sess.Conn.Provider)
+			return renewedTokens{}, true, false
+		}
+		return renewedTokens{}, false, false
+	}
+	sealed, err := s.secrets.Seal(tokens.Access)
+	if err != nil {
+		slog.WarnContext(ctx, "rotated token could not be sealed", "err", err)
+		return tokens, false, true
+	}
+	sealedRefresh := ""
+	if tokens.Refresh != "" {
+		sealedRefresh, _ = s.secrets.Seal(tokens.Refresh)
+	}
+	if err := s.db.UpdateStoreConnectionToken(ctx, db.UpdateStoreConnectionTokenParams{
+		ID:           sess.Conn.ID,
+		AccessToken:  sealed,
+		RefreshToken: pgtype.Text{String: sealedRefresh, Valid: sealedRefresh != ""},
+		ExpiresAt:    pgtype.Timestamptz{Time: time.Now().Add(tokens.ExpiresIn), Valid: tokens.ExpiresIn > 0},
+	}); err != nil {
+		slog.WarnContext(ctx, "rotated token not saved", "provider", sess.Conn.Provider, "err", err)
+	}
+	return tokens, false, true
+}
+
+// gogClient returns a usable GOG client for the instance's newest active connection.
+func (s *Server) gogClient(ctx context.Context) (*gog.Client, db.StoreConnection, bool) {
+	sess, ok := s.providerSession(ctx, "gog")
+	if !ok {
 		return nil, db.StoreConnection{}, false
 	}
-	refresh := ""
-	if conn.RefreshToken.Valid {
-		if refresh, err = s.secrets.Open(conn.RefreshToken.String); err != nil {
-			slog.WarnContext(ctx, "gog refresh token undecryptable", "err", err)
-			s.markStoreConnectionError(ctx, "gog")
-			return nil, db.StoreConnection{}, false
-		}
+	cfg := s.gogConfig()
+	client := gog.NewClient(cfg, gog.Tokens{AccessToken: sess.Access, RefreshToken: sess.Refresh})
+	if tokens, abort, renewed := s.renewIfExpiring(ctx, sess, func(ctx context.Context) (renewedTokens, error) {
+		fresh, err := client.Refresh(ctx)
+		return gogTokens(fresh, err)
+	}); abort {
+		return nil, db.StoreConnection{}, false
+	} else if renewed {
+		client = gog.NewClient(cfg, gog.Tokens{AccessToken: tokens.Access, RefreshToken: tokens.Refresh, ExpiresIn: int(tokens.ExpiresIn.Seconds())})
 	}
+	return client, sess.Conn, true
+}
 
-	client := gog.NewClient(s.gogConfig(), gog.Tokens{AccessToken: access, RefreshToken: refresh})
-	if conn.ExpiresAt.Valid && time.Until(conn.ExpiresAt.Time) < 10*time.Minute && refresh != "" {
-		tokens, err := client.Refresh(ctx)
-		if err != nil {
-			slog.WarnContext(ctx, "gog token refresh failed", "err", err)
-			if errors.Is(err, store.ErrReauth) {
-				s.markStoreConnectionError(ctx, "gog")
-				return nil, db.StoreConnection{}, false
-			}
-			// A transient provider failure is not a dead credential: keep using the
-			// access token, which may still be valid for a while.
-		} else {
-			if sealed, err := s.secrets.Seal(tokens.AccessToken); err == nil {
-				sealedRefresh := ""
-				if tokens.RefreshToken != "" {
-					sealedRefresh, _ = s.secrets.Seal(tokens.RefreshToken)
-				}
-				if err := s.db.UpdateStoreConnectionToken(ctx, db.UpdateStoreConnectionTokenParams{
-					ID:           conn.ID,
-					AccessToken:  sealed,
-					RefreshToken: pgtype.Text{String: sealedRefresh, Valid: sealedRefresh != ""},
-					ExpiresAt:    pgtype.Timestamptz{Time: time.Now().Add(time.Duration(tokens.ExpiresIn) * time.Second), Valid: true},
-				}); err != nil {
-					slog.WarnContext(ctx, "rotated gog token not saved", "err", err)
-				}
-			}
-			client = gog.NewClient(s.gogConfig(), tokens)
+func gogTokens(t gog.Tokens, err error) (renewedTokens, error) {
+	if err != nil {
+		return renewedTokens{}, err
+	}
+	return renewedTokens{
+		Access:    t.AccessToken,
+		Refresh:   t.RefreshToken,
+		ExpiresIn: time.Duration(t.ExpiresIn) * time.Second,
+	}, nil
+}
+
+// epicClient returns a usable Epic client for the instance's newest active connection.
+func (s *Server) epicClient(ctx context.Context) (*epic.Client, db.StoreConnection, bool) {
+	sess, ok := s.providerSession(ctx, "epic")
+	if !ok {
+		return nil, db.StoreConnection{}, false
+	}
+	cfg := s.epicConfig()
+	client := epic.NewClient(cfg, epic.Tokens{AccessToken: sess.Access, RefreshToken: sess.Refresh})
+	if tokens, abort, renewed := s.renewIfExpiring(ctx, sess, func(ctx context.Context) (renewedTokens, error) {
+		fresh, err := client.Refresh(ctx)
+		return epicTokens(fresh, err)
+	}); abort {
+		return nil, db.StoreConnection{}, false
+	} else if renewed {
+		client = epic.NewClient(cfg, epic.Tokens{AccessToken: tokens.Access, RefreshToken: tokens.Refresh, ExpiresIn: int(tokens.ExpiresIn.Seconds())})
+	}
+	return client, sess.Conn, true
+}
+
+func epicTokens(t epic.Tokens, err error) (renewedTokens, error) {
+	if err != nil {
+		return renewedTokens{}, err
+	}
+	return renewedTokens{
+		Access:    t.AccessToken,
+		Refresh:   t.RefreshToken,
+		ExpiresIn: time.Duration(t.ExpiresIn) * time.Second,
+	}, nil
+}
+
+func (s *Server) epicConfig() epic.Config {
+	cfg := epic.DefaultConfig()
+	cfg.Timeout = 2 * time.Minute
+	return cfg
+}
+
+// saveProviderConnection stores a freshly exchanged token pair, sealed. A reconnect
+// replaces the previous row for the same account rather than accumulating connections.
+func (s *Server) saveProviderConnection(ctx context.Context, provider, label, accountID string, access, refresh string, expiresIn time.Duration) error {
+	sealedAccess, err := s.secrets.Seal(access)
+	if err != nil {
+		return err
+	}
+	sealedRefresh := ""
+	if refresh != "" {
+		if sealedRefresh, err = s.secrets.Seal(refresh); err != nil {
+			return err
 		}
 	}
-	return client, conn, true
+	_, err = s.db.CreateStoreConnection(ctx, db.CreateStoreConnectionParams{
+		ID:           pgtype.UUID{Bytes: uuid.New(), Valid: true},
+		Provider:     provider,
+		AccountLabel: pgtype.Text{String: label, Valid: label != ""},
+		AccountID:    pgtype.Text{String: accountID, Valid: accountID != ""},
+		AccessToken:  sealedAccess,
+		RefreshToken: pgtype.Text{String: sealedRefresh, Valid: sealedRefresh != ""},
+		ExpiresAt:    pgtype.Timestamptz{Time: time.Now().Add(expiresIn), Valid: expiresIn > 0},
+		Status:       "active",
+	})
+	return err
 }
 
 func (s *Server) markStoreConnectionError(ctx context.Context, provider string) {

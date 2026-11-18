@@ -63,6 +63,28 @@
          hx-swap="innerHTML">
       <p class="text-sm text-zinc-500">Loading&hellip;</p>
     </div>
+
+    <h2 class="text-lg mb-2">Connect Epic</h2>
+    <ol class="list-decimal ml-5 text-sm text-zinc-400 mb-3 space-y-1">
+      <li>Open <a class="text-blue-400 underline" href="{{.EpicAuthorizeURL}}" target="_blank" rel="noopener">the Epic sign-in page</a> in a new tab and sign in.</li>
+      <li>Epic shows a small JSON document at <span class="font-mono">/id/api/redirect</span>. Select all of it and copy;
+        pasting just the <span class="font-mono">code</span> value or the address also works.</li>
+      <li>Epic lists your catalogue but its builds are not downloadable from this instance yet, so connecting is read-only.</li>
+    </ol>
+    <form method="post" action="/dashboard/stores/epic/connect" class="flex gap-2 mb-8">
+      <input type="hidden" name="_csrf" value="{{.CSRF}}">
+      <input name="code" placeholder="the code or the whole JSON page"
+             class="flex-1 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-sm">
+      <button class="rounded bg-blue-600 px-4 py-2 text-sm font-medium">Connect</button>
+    </form>
+
+    <h2 class="text-lg mb-2">Epic library</h2>
+    <div id="epic-library"
+         hx-get="/dashboard/stores/epic/library"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+      <p class="text-sm text-zinc-500">Loading&hellip;</p>
+    </div>
   </main>
 </body>
 </html>

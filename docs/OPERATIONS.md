@@ -140,6 +140,14 @@ same product again while it is running returns the existing task rather than
 starting a second download, and a product whose provider build has not changed
 completes with no transfer at all. Tick `force` to re-download deliberately.
 
+**Epic is read-only.** Connecting an Epic account works and lists the catalogue,
+but ingestion is not offered: a build's file list is a binary manifest whose
+decoding this project has not implemented and will not guess at. The page says so,
+and an ingest request fails with `ErrManifestDecode` naming the manifest rather
+than starting a download that cannot finish. The credential store, the renewal path
+and the library listing are all exercised, so adding the decoder later needs no
+other change.
+
 ## Health and monitoring
 
 - `GET /api/v1/health` is the liveness probe and returns `204 No Content` without

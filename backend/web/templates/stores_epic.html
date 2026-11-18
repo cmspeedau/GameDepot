@@ -1,0 +1,21 @@
+{{if .Error}}
+<p class="text-sm text-red-300">{{.Error}}</p>
+{{else if not .Games}}
+<p class="text-sm text-zinc-500">No entitled products found for this account.</p>
+{{else}}
+<p class="text-sm text-amber-300 mb-3">Epic titles are listed, not ingested. A build's file
+  list is a binary manifest whose decoding is not implemented here yet, so download cannot
+  start; connecting is read-only.</p>
+<p class="text-sm text-zinc-400 mb-3">{{len .Games}} product(s).</p>
+<table class="w-full text-sm">
+  <thead><tr class="text-left text-zinc-400"><th class="py-2">Title</th><th>Namespace / item</th></tr></thead>
+  <tbody>
+  {{range .Games}}
+    <tr class="border-t border-zinc-800">
+      <td class="py-2">{{.Title}}</td>
+      <td class="font-mono text-zinc-500 text-xs">{{.ID}}</td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+{{end}}

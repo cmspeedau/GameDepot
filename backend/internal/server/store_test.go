@@ -92,10 +92,11 @@ func TestStoresPageRendersWithConnections(t *testing.T) {
 	}}
 	var buf bytes.Buffer
 	if err := s.templates.ExecuteTemplate(&buf, "stores.html", map[string]any{
-		"Title":        "Store connections",
-		"Connections":  rows,
-		"AuthorizeURL": "https://auth.gog.com/auth?client_id=1",
-		"CSRF":         "tok",
+		"Title":            "Store connections",
+		"Connections":      rows,
+		"AuthorizeURL":     "https://auth.gog.com/auth?client_id=1",
+		"EpicAuthorizeURL": "https://www.epicgames.com/id/login?redirectUrl=x",
+		"CSRF":             "tok",
 	}); err != nil {
 		t.Fatalf("stores.html: %v", err)
 	}
@@ -118,6 +119,7 @@ func TestStoresPageRendersWithConnections(t *testing.T) {
 	rows[0].Status = "error"
 	if err := s.templates.ExecuteTemplate(&buf, "stores.html", map[string]any{
 		"Connections": rows, "AuthorizeURL": "https://auth.gog.com/auth",
+		"EpicAuthorizeURL": "https://www.epicgames.com/id/login",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -147,6 +149,42 @@ func TestMaskConnectionNeverLeaksTokens(t *testing.T) {
 	}
 	if view.NeedsReauth {
 		t.Fatal("an active connection must not ask for re-auth")
+	}
+}
+
+func TestEpicLibraryFragmentRenders(t *testing.T) {
+	s := New(testConfig(), nil)
+	var buf bytes.Buffer
+	if err := s.templates.ExecuteTemplate(&buf, "stores_epic.html", map[string]any{
+		"Games": []store.Game{
+			{ID: "ns-one/item-hash", Title: "Some Racing Game"},
+			{ID: "ns-two/other", Title: "Platformer"},
+		},
+	}); err != nil {
+		t.Fatalf("stores_epic.html: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{"Some Racing Game", "ns-one/item-hash", "2 product(s)", "not implemented here yet"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("epic fragment missing %q", want)
+		}
+	}
+	// Ingestion is not offered: no form and no button, so nobody can start a download
+	// that cannot finish.
+	for _, forbidden := range []string{"<form", "<button", "/stores/epic/ingest"} {
+		if strings.Contains(out, forbidden) {
+			t.Errorf("the Epic fragment must not offer ingestion controls, found %q", forbidden)
+		}
+	}
+
+	buf.Reset()
+	if err := s.templates.ExecuteTemplate(&buf, "stores_epic.html", map[string]any{
+		"Error": "No Epic connection. Connect an account first.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "No Epic connection") {
+		t.Fatal("the error branch must render")
 	}
 }
 
