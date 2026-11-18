@@ -9,10 +9,12 @@ project is included or ported.
 
 ## Status
 
-**Design and documentation only.** No server or client code exists yet. `ROADMAP.md`
-records what is planned and what is not started.
+Implementation is underway. Phases 1 through 6 (server, identity, catalog, releases and
+depot, desktop core, operations) are complete; phase 7 (cloud saves, store ingestion)
+is partial. Per-item state, with what is tested and what is not, is in
+[`ROADMAP.md`](ROADMAP.md).
 
-## What it will do
+## What it does
 
 - Catalog games with metadata, tags, companies and cover art.
 - Build installable versions from directories on disk.
@@ -64,11 +66,12 @@ GameDepot/
   docs/             client API, operations, decision records
 ```
 
-`backend/`, `desktop/` and `deploy/` do not exist yet. They are created in phase 1.
+`backend/` is the Go server, `desktop/` the Tauri client and `deploy/` the container
+build. All three exist; their phase status is in [`ROADMAP.md`](ROADMAP.md).
 
 ## Requirements
 
-To run the server, once it exists:
+To run the server:
 
 - PostgreSQL 13 or newer.
 - Two writable volumes: one for the library, one for data (objects, depot, keys).

@@ -1,0 +1,15 @@
+# The server image builds from backend/ only. Everything else in the repo is
+# excluded so the build context stays small.
+.git
+.github
+desktop
+docs
+*.md
+LICENSE
+NOTICE
+.env
+.env.*
+!.env.example
+deploy
+backend/.data
+backend/bin

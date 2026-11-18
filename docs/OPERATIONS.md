@@ -1,8 +1,7 @@
 # Operations
 
-How to run, back up and upgrade a GameDepot instance. This describes the target
-deployment. The server does not exist yet, so treat the commands as the contract the
-implementation must satisfy.
+How to run, back up and upgrade a GameDepot instance. The commands are what the
+current server implements.
 
 ## What you need
 
@@ -21,15 +20,16 @@ hash, so restoring one without the other produces releases that cannot be verifi
 1. Start the server with `DATABASE_URL`, `EXTERNAL_URL`, `DATA` and `LIBRARY` set.
 2. The server creates the `setup` system token and prints it once, in the log, at `info`
    level.
-3. Open `https://<host>/auth/setup`, enter the token, and create the admin account.
+3. Open `https://<host>/setup?token=<printed token>`, and create the admin account.
 4. The token is deleted on success. Check the log for a warning if setup is still open
    after you finish.
 
-If the setup token is lost before use, restart with `LOG_LEVEL=debug`; it is regenerated
-only when no `setup` token exists. If one exists and is unknown, delete the row manually:
+If the setup token is lost before use, restart the server: as long as no user exists and
+setup has not completed, a fresh token is generated and printed to the log. To force a
+new token, or to close an open setup, delete the stored hash:
 
 ```sql
-DELETE FROM "APIToken" WHERE mode = 'System' AND 'setup' = ANY(acls);
+DELETE FROM settings WHERE key = 'setup_token';
 ```
 
 ## Configuration

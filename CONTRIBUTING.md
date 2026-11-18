@@ -43,8 +43,9 @@ cd desktop/src-tauri
 cargo check
 ```
 
-Start PostgreSQL with the compose file in `deploy/`, once it exists, or point
-`DATABASE_URL` at any PostgreSQL 13 or newer instance.
+Start PostgreSQL with the compose file in `deploy/` (`docker compose up -d db` from that
+directory), or point `DATABASE_URL` at any PostgreSQL 13 or newer instance. To run the
+whole stack, including the server image, use `docker compose up -d --build`.
 
 ## Branching
 

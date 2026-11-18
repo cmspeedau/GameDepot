@@ -15,7 +15,7 @@ services:
 
   gamedepot:
     build:
-      context: .
+      context: ..
       dockerfile: deploy/Dockerfile
     ports:
       - "4000:4000"
