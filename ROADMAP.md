@@ -142,8 +142,13 @@ then relaunch after a client restart.
       database check); `GET /api/v1/ready` is readiness (database ping, `200`/`503`).
       Verified live.
 - [ ] Integrity and cleanup tasks on a schedule.
-- [ ] Backup and restore runbook tested against a real dump.
-- [ ] Single image build with embedded assets and migrations.
+- [x] Backup and restore runbook tested against a real dump. `pg_dump --format=custom`
+      of a migrated database restored cleanly into a fresh database with all six goose
+      migrations and the full schema present; runbook steps unchanged.
+- [x] Single image build with embedded assets and migrations. `docker build -f
+      deploy/Dockerfile .` completes; the binary embeds the dashboard assets via
+      `go:embed` and migrations ship in the module, and the image applies them on boot.
+- [ ] Upgrade procedure and version reporting.
 - [ ] Upgrade procedure and version reporting.
 
 Exit criteria: a fresh host runs from compose, survives a restart and restores from
