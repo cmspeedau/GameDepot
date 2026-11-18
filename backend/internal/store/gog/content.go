@@ -51,7 +51,12 @@ func getZlibJSON(body []byte, failure string) (map[string]any, error) {
 	return out, nil
 }
 
-// Depot is one downloadable content set inside a build.
+// Depot is one downloadable content set inside a build. The v2 depot object carries no
+// operating system field of its own (verified against live builds): the build request is
+// already scoped by OS, so filtering depots by platform would be inventing a field.
+//
+// Note the link document also contains GOG's own clientId/clientSecret keys. They are
+// deliberately not parsed, and must never be logged.
 type Depot struct {
 	Manifest       string   `json:"manifest"`
 	ProductID      string   `json:"productId"`
@@ -67,7 +72,11 @@ type BuildMeta struct {
 	BuildID          string
 	BaseProductID    string
 	InstallDirectory string
-	Depots           []Depot
+	// Platform is what GOG labels this build: "windows" or "osx". It is checked
+	// against the requested platform, because a vocabulary slip in the path segment
+	// would otherwise deliver the wrong operating system's files quietly.
+	Platform string
+	Depots   []Depot
 }
 
 // BuildMeta fetches the zlib-compressed build meta named by a build's link. The link is
@@ -91,6 +100,7 @@ func (c *Client) BuildMeta(ctx context.Context, link string) (BuildMeta, error) 
 		BuildID:          jsonString(meta["buildId"]),
 		BaseProductID:    jsonString(meta["baseProductId"]),
 		InstallDirectory: jsonString(meta["installDirectory"]),
+		Platform:         jsonString(meta["platform"]),
 	}
 	if depots, ok := meta["depots"].([]any); ok {
 		for _, raw := range depots {

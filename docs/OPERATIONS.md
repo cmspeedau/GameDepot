@@ -140,6 +140,16 @@ same product again while it is running returns the existing task rather than
 starting a second download, and a product whose provider build has not changed
 completes with no transfer at all. Tick `force` to re-download deliberately.
 
+**Platforms.** A GOG ingest asks for the platform named on the ingest row. GOG's
+build API knows only `windows` and `osx`, so `macos` is translated to `osx` on
+the way out, and the library's `Mac` flag is normalised back to `macos` on the
+way in. The acquired build carries its own `platform` label, which is compared
+with what was requested; a mismatch stops the job. Native Linux content is not
+reachable this way at all (GOG answers `Unsupported OS` for `linux`), so
+choosing Linux reports that instead of quietly publishing the Windows build. To
+run a Linux title today, ingest its Windows build and launch it through the
+compatibility tool.
+
 **Epic is read-only.** Connecting an Epic account works and lists the catalogue,
 but ingestion is not offered: a build's file list is a binary manifest whose
 decoding this project has not implemented and will not guess at. The page says

@@ -169,6 +169,51 @@ func (q *Queries) GetStoreProductByGame(ctx context.Context, gameID pgtype.UUID)
 	return items, nil
 }
 
+const getStoreProductSiblings = `-- name: GetStoreProductSiblings :many
+SELECT id, provider, product_id, game_id, title, platform, last_build, last_release_digest, created_at, updated_at
+FROM store_products WHERE provider = $1 AND product_id = $2
+ORDER BY updated_at DESC
+`
+
+type GetStoreProductSiblingsParams struct {
+	Provider  string
+	ProductID string
+}
+
+// Every mapping for a provider product across platforms, newest first. A title
+// ingested for Windows and again for macOS is still one game, so the platform-specific
+// row cannot be the only place the game link is kept.
+func (q *Queries) GetStoreProductSiblings(ctx context.Context, arg GetStoreProductSiblingsParams) ([]StoreProduct, error) {
+	rows, err := q.db.Query(ctx, getStoreProductSiblings, arg.Provider, arg.ProductID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StoreProduct
+	for rows.Next() {
+		var i StoreProduct
+		if err := rows.Scan(
+			&i.ID,
+			&i.Provider,
+			&i.ProductID,
+			&i.GameID,
+			&i.Title,
+			&i.Platform,
+			&i.LastBuild,
+			&i.LastReleaseDigest,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listStoreConnections = `-- name: ListStoreConnections :many
 SELECT id, provider, account_label, account_id, access_token, refresh_token, expires_at, status, created_at, updated_at
 FROM store_connections

@@ -186,8 +186,23 @@ backup.
       entitled library, ingest with platform and force, task page for progress.
       Verified live against production GOG for the OAuth path (a bogus code reached GOG's
       real `invalid_grant`), plus CSRF gating, token-never-in-page, and the
-      undecryptable-credential flag through Postgres. Not yet done: a real end-to-end
-      ingest with a human's GOG account, and Epic.
+      undecryptable-credential flag through Postgres.
+      Platform handling was wrong in the predecessor and is fixed and measured
+      here (ADR-0010): the build API accepts only `windows` and `osx`, so
+      `macos` maps to `osx` on the way out and the library's `Mac` flag
+      normalises to `macos` on the way in; the acquired build's own `platform`
+      label is checked against the request, and the dashboard offers only the
+      platforms GOG reports per title. Mac ingestion is proven against
+      production for build, meta and depot manifest (576 files with
+      `.app/Contents/MacOS/` paths). Native Linux is refused with an explanation
+      rather than downgraded: GOG's content system answers `Unsupported OS` for
+      `linux`, and its Linux builds live on the installer downlink API and
+      chunklist instead.
+      Follow-ups: one end-to-end ingest with an operator's own GOG account,
+      which is the step secure_link requires a credential for; native Linux
+      acquisition through the installer route (downlink, chunklist MD5s,
+      innoextract/`mojo`/7z unpack); and confirming Mac launch entries on that
+      first real ingest.
 - [ ] Metadata providers with a manual fallback.
 - [ ] Cache node for LAN and offline use (see below).
 

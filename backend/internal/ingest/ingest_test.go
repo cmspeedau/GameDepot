@@ -77,6 +77,8 @@ func (f *fakeProvider) LatestBuild(ctx context.Context, productID, platform stri
 // test seeds one.
 type recorder struct {
 	existing    *db.StoreProduct
+	siblings    []db.StoreProduct
+	siblingErr  error
 	productErr  error
 	gameErr     error
 	versionErr  error
@@ -101,6 +103,13 @@ func (r *recorder) GetStoreProduct(ctx context.Context, arg db.GetStoreProductPa
 		return *r.existing, nil
 	}
 	return db.StoreProduct{}, pgx.ErrNoRows
+}
+
+func (r *recorder) GetStoreProductSiblings(ctx context.Context, arg db.GetStoreProductSiblingsParams) ([]db.StoreProduct, error) {
+	if r.siblingErr != nil {
+		return nil, r.siblingErr
+	}
+	return r.siblings, nil
 }
 
 func (r *recorder) GetGameByID(ctx context.Context, id pgtype.UUID) (db.Game, error) {
@@ -335,6 +344,63 @@ func TestLaunchFailureDoesNotLoseTheRelease(t *testing.T) {
 	}
 	if len(rec.launches) != 0 {
 		t.Fatal("no launches should be recorded when the insert fails")
+	}
+}
+
+// The product mapping is keyed per platform, so ingesting the Mac build of a title
+// already ingested for Windows must extend the same game rather than fork a second
+// catalogue entry with the same name.
+func TestOtherPlatformBuildExtendsTheSameGame(t *testing.T) {
+	gameID := uuid.New()
+	rec := &recorder{
+		// no mapping for this platform yet...
+		existing: nil,
+		// ...but Windows already created the game for the same product
+		siblings: []db.StoreProduct{{
+			ID:        pgtype.UUID{Bytes: uuid.New(), Valid: true},
+			ProductID: "1711765822",
+			GameID:    pgtype.UUID{Bytes: gameID, Valid: true},
+			Title:     "Timberborn",
+			Platform:  "windows",
+		}},
+	}
+	svc := NewService(rec, t.TempDir(), t.TempDir())
+	result, err := svc.Run(context.Background(), newGameProvider(), Options{
+		Provider: "gog", ProductID: "1711765822", Platform: "macos",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.GameID != gameID {
+		t.Fatalf("game = %s, want the existing %s", result.GameID, gameID)
+	}
+	if rec.createdGame.Name != "" {
+		t.Fatalf("a second game row was created: %+v", rec.createdGame)
+	}
+	// The version is still recorded, on the Mac platform, with the title carried over
+	// from the sibling because the caller did not pass one.
+	if len(rec.versions) != 1 || rec.versions[0].Platform != "macos" {
+		t.Fatalf("versions = %+v", rec.versions)
+	}
+	if len(rec.upserts) != 1 || rec.upserts[0].Platform != "macos" || rec.upserts[0].Title != "Timberborn" {
+		t.Fatalf("upserts = %+v", rec.upserts)
+	}
+}
+
+func TestUnreadableSiblingsDoNotStopTheIngest(t *testing.T) {
+	rec := &recorder{siblingErr: errors.New("read failed")}
+	svc := NewService(rec, t.TempDir(), t.TempDir())
+	result, err := svc.Run(context.Background(), newGameProvider(), Options{
+		Provider: "gog", ProductID: "1711765822", Title: "Timberborn", Platform: "macos",
+	})
+	if err != nil {
+		t.Fatalf("a sibling read failure must not fail the run: %v", err)
+	}
+	if rec.createdGame.Name != "Timberborn" {
+		t.Fatalf("game = %+v, want a fresh row from the supplied title", rec.createdGame)
+	}
+	if result.GameID == uuid.Nil {
+		t.Fatal("want a game id")
 	}
 }
 

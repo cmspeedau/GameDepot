@@ -61,3 +61,11 @@ ORDER BY title ASC;
 -- Forget the last-ingested build after a release is deleted, so a re-ingest is allowed.
 UPDATE store_products SET last_build = NULL, last_release_digest = NULL, updated_at = now()
 WHERE provider = $1 AND product_id = $2 AND platform = $3;
+
+-- name: GetStoreProductSiblings :many
+-- Every mapping for a provider product across platforms, newest first. A title
+-- ingested for Windows and again for macOS is still one game, so the platform-specific
+-- row cannot be the only place the game link is kept.
+SELECT id, provider, product_id, game_id, title, platform, last_build, last_release_digest, created_at, updated_at
+FROM store_products WHERE provider = $1 AND product_id = $2
+ORDER BY updated_at DESC;

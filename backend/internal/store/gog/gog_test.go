@@ -280,9 +280,11 @@ func TestLibraryUsesDocumentedEndpoints(t *testing.T) {
 	if games[0].ID != "1711765822" || games[0].Title != "Timberborn" {
 		t.Fatalf("game = %+v", games[0])
 	}
-	if strings.Join(games[0].Platforms, ",") != "mac,windows" &&
-		strings.Join(games[0].Platforms, ",") != "windows,mac" {
-		t.Fatalf("platforms = %v, want windows and mac only", games[0].Platforms)
+	// GOG's "Mac" flag must arrive as this project's "macos", in a stable order: the
+	// dashboard preselects the first entry, and the ingest form's values must be ones
+	// ContentOS accepts.
+	if got := strings.Join(games[0].Platforms, ","); got != "macos,windows" {
+		t.Fatalf("platforms = %q, want the canonical macos,windows", got)
 	}
 	var sawProducts, sawOwned bool
 	for _, c := range s.calls {
@@ -426,5 +428,130 @@ func TestBuildsRejectsBadProductID(t *testing.T) {
 	c := NewClient(DefaultConfig(), Tokens{AccessToken: "t"})
 	if _, err := c.Builds(context.Background(), "../etc", "windows"); err == nil {
 		t.Fatal("want a config error for an invalid id")
+	}
+}
+
+func TestContentOSMapping(t *testing.T) {
+	cases := map[string]string{
+		"":        "windows",
+		"windows": "windows",
+		"Windows": "windows",
+		"pc":      "windows",
+		"macos":   "osx",
+		"mac":     "osx",
+		"osx":     "osx",
+		"darwin":  "osx",
+		" macOS ": "osx",
+	}
+	for in, want := range cases {
+		got, err := ContentOS(in)
+		if err != nil {
+			t.Errorf("ContentOS(%q) errored: %v", in, err)
+			continue
+		}
+		if got != want {
+			t.Errorf("ContentOS(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestContentOSStructure(t *testing.T) {
+	// Linux is refused rather than silently downgraded: the old pipeline's Windows
+	// fallback is exactly what made people think Linux was never picked up.
+	if _, err := ContentOS("linux"); err == nil {
+		t.Fatal("want an explicit error for linux")
+	} else {
+		var cfgErr *store.ConfigError
+		if !errors.As(err, &cfgErr) {
+			t.Fatalf("err = %T %v, want a config error", err, err)
+		}
+		if !strings.Contains(err.Error(), "Unsupported OS") || !strings.Contains(err.Error(), "installer") {
+			t.Fatalf("error should explain the route that would work: %v", err)
+		}
+	}
+	if _, err := ContentOS("solaris"); err == nil {
+		t.Fatal("an unknown platform must not default to windows")
+	}
+}
+
+// A Mac ingest must ask GOG for /os/osx/builds. Getting this wrong is the original bug:
+// the form said macos, GOG wanted osx, and every Mac title came back with no builds.
+func TestBuildsAsksGOGForTheMappedOS(t *testing.T) {
+	var path string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"items":[]}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(Config{ContentSystemURL: srv.URL, HTTPClient: srv.Client()}, Tokens{AccessToken: "t"})
+	for platform, want := range map[string]string{
+		"macos": "/products/1207658930/os/osx/builds",
+		"linux": "", // refused before any request is made
+	} {
+		_, err := c.Builds(context.Background(), "1207658930", platform)
+		if platform == "linux" {
+			if err == nil {
+				t.Fatal("linux must be refused without contacting GOG")
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if path != want {
+			t.Errorf("Builds(%q) fetched %q, want %q", platform, path, want)
+		}
+	}
+}
+
+func TestBuildsReportsUnsupportedOS(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"not_found","error_description":"Unsupported OS"}`))
+	}))
+	defer srv.Close()
+	c := NewClient(Config{ContentSystemURL: srv.URL, HTTPClient: srv.Client()}, Tokens{AccessToken: "t"})
+	_, err := c.Builds(context.Background(), "1207658930", "windows")
+	if err == nil {
+		t.Fatal("want the unsupported-os error to reach the caller")
+	}
+	if !strings.Contains(err.Error(), "platform") {
+		t.Fatalf("err should name the platform: %v", err)
+	}
+}
+
+// GOG labels each build meta with the platform it served; acquiring against a mismatch
+// has to stop rather than publish Mac files into a Windows version.
+func TestAcquireRejectsPlatformMismatch(t *testing.T) {
+	s := newStubContent(t)
+	s.happyProduct()
+	s.meta["platform"] = "osx" // build list asked for windows, meta says osx
+	_, err := s.client().acquire(context.Background(), product, "", store.AcquireOptions{StagingDir: t.TempDir()})
+	if err == nil || !strings.Contains(err.Error(), "platform") {
+		t.Fatalf("err = %v, want the platform mismatch to stop the run", err)
+	}
+}
+
+func TestAcquireAcceptsMatchingPlatformLabel(t *testing.T) {
+	s := newStubContent(t)
+	s.happyProduct()
+	s.meta["platform"] = "windows"
+	if _, err := s.client().acquire(context.Background(), product, "", store.AcquireOptions{StagingDir: t.TempDir()}); err != nil {
+		t.Fatalf("a labelled build that matches must acquire: %v", err)
+	}
+}
+
+func TestPlatformCanonical(t *testing.T) {
+	cases := map[string]string{
+		"Windows": "windows", "win": "windows", "PC": "windows",
+		"Mac": "macos", "macOS": "macos", "osx": "macos", "Linux": "linux",
+		"  ": "",
+	}
+	for in, want := range cases {
+		if got := PlatformCanonical(in); got != want {
+			t.Errorf("PlatformCanonical(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

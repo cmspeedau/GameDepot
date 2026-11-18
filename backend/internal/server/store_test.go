@@ -36,8 +36,9 @@ func TestStoreTemplatesRender(t *testing.T) {
 	s := New(testConfig(), nil)
 
 	games := []store.Game{
-		{ID: "1711765822", Title: "Timberborn", Platforms: []string{"windows", "mac"}},
-		{ID: "1207658695", Title: "Hades & the Escape", Platforms: nil},
+		{ID: "1711765822", Title: "Timberborn", Platforms: []string{"macos", "windows"}},
+		{ID: "1207658695", Title: "Hades & the Escape", Platforms: []string{"linux", "windows"}},
+		{ID: "100", Title: "Windows Only", Platforms: nil},
 	}
 	var buf bytes.Buffer
 	if err := s.templates.ExecuteTemplate(&buf, "stores_library.html", map[string]any{
@@ -53,12 +54,19 @@ func TestStoreTemplatesRender(t *testing.T) {
 		"value=\"1711765822\"",
 		"/dashboard/stores/gog/ingest",
 		"name=\"_csrf\" value=\"token-abc\"",
-		"windows", "macos", "linux", // the platform picker
-		"name=\"force\"", // and the re-download override the runbook describes
+		`value="macos"`, `value="linux"`, `value="windows"`, // each title offers only what GOG reports
+		"(no depot builds)", // and says so for Linux
+		"name=\"force\"",    // and the re-download override the runbook describes
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("library fragment missing %q", want)
 		}
+	}
+
+	// A title GOG reports for Windows only must not be offered platforms it lacks.
+	windowsOnly := out[strings.Index(out, "Windows Only"):]
+	if strings.Contains(windowsOnly, `value="macos"`) || strings.Contains(windowsOnly, `value="linux"`) {
+		t.Error("a windows-only title offered platforms GOG does not report for it")
 	}
 
 	// The empty and error branches.

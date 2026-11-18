@@ -397,12 +397,7 @@ func shapeProduct(raw json.RawMessage) *store.Game {
 		return nil
 	}
 	g := &store.Game{ID: id, Title: item.Title}
-	// getFilteredProducts reports platforms as { "Windows": true, "Mac": false, ... }.
-	for name, supported := range item.WorksOn {
-		if ok, _ := supported.(bool); ok {
-			g.Platforms = append(g.Platforms, strings.ToLower(name))
-		}
-	}
+	g.Platforms = worksOnPlatforms(item.WorksOn)
 	return g
 }
 
@@ -429,12 +424,47 @@ func (c *Client) productDetails(ctx context.Context, productID string) (*store.G
 		return nil, nil
 	}
 	g := &store.Game{ID: productID, Title: probe.Title}
-	for name, supported := range probe.WorksOn {
+	g.Platforms = worksOnPlatforms(probe.WorksOn)
+	return g, nil
+}
+
+// PlatformCanonical maps GOG's library vocabulary onto this project's platform keys.
+// getFilteredProducts says "Mac" where everything else in this system says "macos", and
+// an un-normalised "mac" arriving at the ingest form would come back as an unknown
+// platform, which is the same mismatch that made Mac titles unacquirable to begin with.
+func PlatformCanonical(name string) string {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "windows", "win", "pc":
+		return "windows"
+	case "mac", "macos", "osx", "darwin":
+		return "macos"
+	case "linux":
+		return "linux"
+	default:
+		return strings.ToLower(strings.TrimSpace(name))
+	}
+}
+
+// worksOnPlatforms turns GOG's { "Windows": true, "Mac": false, "Linux": true } flags
+// into the canonical, ordered list this project stores. Ordered because the dashboard
+// preselects the first entry, and a map's iteration order would make that a lottery.
+func worksOnPlatforms(flags map[string]any) []string {
+	var out []string
+	for name, supported := range flags {
 		if ok, _ := supported.(bool); ok {
-			g.Platforms = append(g.Platforms, strings.ToLower(name))
+			out = append(out, PlatformCanonical(name))
 		}
 	}
-	return g, nil
+	sortStrings(out)
+	return out
+}
+
+func sortStrings(out []string) {
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0 && out[j] < out[j-1]; j-- {
+			out[j], out[j-1] = out[j-1], out[j]
+		}
+	}
 }
 
 // --- content system ---
@@ -464,20 +494,54 @@ type buildList struct {
 	} `json:"items"`
 }
 
+// ContentOS maps a caller's platform key onto the value GOG's content system accepts in
+// the /os/{os}/ path segment. The vocabularies genuinely differ across GOG's surfaces,
+// and that difference is the whole reason Mac and Linux titles were never acquired: the
+// library reports "mac", the download API wants "osx", and anything else answers 404
+// "Unsupported OS".
+//
+// Linux is deliberately not mapped. Probed against GOG on 2026-11-18,
+// /os/linux/builds returns 404 "Unsupported OS" for generation 1 and 2 alike, even for a
+// product whose own store record claims Linux content-system compatibility. Native Linux
+// content is reachable only through the installer downlink API and its chunklist, which
+// this adapter does not implement. Erroring here, instead of quietly falling back to the
+// Windows build, is the point: the old pipeline fell back silently and nobody could tell
+// which build they had.
+func ContentOS(platform string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(platform)) {
+	case "", "windows", "win", "pc":
+		return "windows", nil
+	case "macos", "mac", "osx", "darwin":
+		return "osx", nil
+	case "linux":
+		return "", store.Configf("GOG's content system serves no Linux builds (it answers " +
+			"\"Unsupported OS\"); native Linux content would have to come from the installer " +
+			"downlink API, which is not implemented here")
+	default:
+		return "", store.Configf("unknown platform %q for GOG", platform)
+	}
+}
+
 // Builds lists downloadable builds, newest first. The answer is `{ items }` with
 // snake_case fields and no depot information; the depots arrive through the build's
 // link document.
-func (c *Client) Builds(ctx context.Context, productID, os string) ([]Build, error) {
+func (c *Client) Builds(ctx context.Context, productID, platform string) ([]Build, error) {
 	if !ValidProductID(productID) {
 		return nil, store.Configf("invalid GOG product id")
 	}
-	if os == "" {
-		os = "windows"
+	os, err := ContentOS(platform)
+	if err != nil {
+		return nil, err
 	}
 	endpoint := fmt.Sprintf("%s/products/%s/os/%s/builds?generation=2",
 		c.cfg.ContentSystemURL, url.PathEscape(productID), url.PathEscape(os))
 	body, err := c.contentGet(ctx, endpoint, "build list request failed")
 	if err != nil {
+		// GOG distinguishes an unsupported OS with 404 and this description; say what
+		// it said rather than reporting an empty build list.
+		if strings.Contains(err.Error(), "404") {
+			return nil, fmt.Errorf("gog: no builds available for platform %q: %w", platform, err)
+		}
 		return nil, err
 	}
 	var parsed buildList

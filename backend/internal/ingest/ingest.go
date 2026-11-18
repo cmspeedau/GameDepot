@@ -64,6 +64,7 @@ type Result struct {
 // recorder, following the same narrow-interface style as internal/maintenance.
 type Store interface {
 	GetStoreProduct(ctx context.Context, arg db.GetStoreProductParams) (db.StoreProduct, error)
+	GetStoreProductSiblings(ctx context.Context, arg db.GetStoreProductSiblingsParams) ([]db.StoreProduct, error)
 	GetGameByID(ctx context.Context, id pgtype.UUID) (db.Game, error)
 	CreateGame(ctx context.Context, arg db.CreateGameParams) (db.Game, error)
 	CreateGameVersion(ctx context.Context, arg db.CreateGameVersionParams) (db.GameVersion, error)
@@ -110,6 +111,7 @@ func (s *Service) Run(ctx context.Context, p store.Provider, opts Options) (Resu
 	}
 
 	product, hadProduct := s.existingProduct(ctx, p.Name(), opts.ProductID, platform)
+	siblings := s.productSiblings(ctx, p.Name(), opts.ProductID)
 
 	// Skip the download when the recorded build is still the newest. A store title that
 	// has not changed should cost nothing to check.
@@ -170,7 +172,7 @@ func (s *Service) Run(ctx context.Context, p store.Provider, opts Options) (Resu
 		return out, fmt.Errorf("ingest: read manifest: %w", err)
 	}
 
-	gameID, title, err := s.ensureGame(ctx, product, hadProduct, opts)
+	gameID, title, err := s.ensureGame(ctx, product, hadProduct, opts, siblings)
 	if err != nil {
 		return out, err
 	}
@@ -252,6 +254,19 @@ func (s *Service) Run(ctx context.Context, p store.Provider, opts Options) (Resu
 	return out, nil
 }
 
+// productSiblings lists every platform mapping recorded for this provider product.
+// Failing to read them is not fatal: the worst case is a fresh game row.
+func (s *Service) productSiblings(ctx context.Context, provider, productID string) []db.StoreProduct {
+	rows, err := s.q.GetStoreProductSiblings(ctx, db.GetStoreProductSiblingsParams{
+		Provider:  provider,
+		ProductID: productID,
+	})
+	if err != nil {
+		return nil
+	}
+	return rows
+}
+
 func (s *Service) existingProduct(ctx context.Context, provider, productID, platform string) (db.StoreProduct, bool) {
 	row, err := s.q.GetStoreProduct(ctx, db.GetStoreProductParams{
 		Provider:  provider,
@@ -266,16 +281,40 @@ func (s *Service) existingProduct(ctx context.Context, provider, productID, plat
 
 // ensureGame reuses the mapped game when one exists, and creates the catalog row on
 // first sight of the product.
-func (s *Service) ensureGame(ctx context.Context, product db.StoreProduct, hadProduct bool, opts Options) (uuid.UUID, string, error) {
+// ensureGame resolves which game row this release belongs to.
+//
+// A title ingested for two platforms is still one game: the product mapping is keyed by
+// (provider, product, platform), so the platform's own row can be absent while a sibling
+// platform already created the game. Following the sibling keeps one catalogue entry with
+// one version per build, which is what the desktop expects to see.
+func (s *Service) ensureGame(ctx context.Context, product db.StoreProduct, hadProduct bool, opts Options, siblings []db.StoreProduct) (uuid.UUID, string, error) {
 	title := firstNonEmpty(opts.Title, product.Title)
+	if title == "" {
+		for _, sib := range siblings {
+			if sib.Title != "" {
+				title = sib.Title
+				break
+			}
+		}
+	}
 	if title == "" {
 		title = fmt.Sprintf("%s %s", opts.Provider, opts.ProductID)
 	}
 	if hadProduct && product.GameID.Valid {
 		if _, err := s.q.GetGameByID(ctx, product.GameID); err == nil {
-			return uuid.UUID(product.GameID.Bytes), title, nil
+			return uuid.UUID(product.GameID.Bytes), firstNonEmpty(title, product.Title), nil
 		}
-		// The game was deleted since; fall through and create a fresh row.
+		// The game was deleted since; fall through to a sibling or a fresh row.
+	}
+	for _, sib := range siblings {
+		if !sib.GameID.Valid {
+			continue
+		}
+		if _, err := s.q.GetGameByID(ctx, sib.GameID); err == nil {
+			// The other platform's row carries the real title, which the caller may
+			// not have supplied for this platform.
+			return uuid.UUID(sib.GameID.Bytes), firstNonEmpty(title, sib.Title), nil
+		}
 	}
 	gameID := uuid.New()
 	slug := Slugify(title)

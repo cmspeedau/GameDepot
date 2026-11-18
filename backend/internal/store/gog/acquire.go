@@ -220,7 +220,7 @@ func (c *Client) acquire(ctx context.Context, productID, buildID string, opts st
 		return result, store.Configf("a valid GOG game ID is required")
 	}
 	if opts.Platform == "" {
-		opts.Platform = "windows"
+		opts.Platform = "windows" // the GOG default, and the only build always present
 	}
 	if opts.Language == "" {
 		opts.Language = "en-US"
@@ -237,6 +237,16 @@ func (c *Client) acquire(ctx context.Context, productID, buildID string, opts st
 	meta, err := c.BuildMeta(ctx, build.Link)
 	if err != nil {
 		return result, err
+	}
+	// GOG labels the build it served. If it ever answers a different platform than the
+	// one the path asked for, stop: installing Mac content labelled as Windows (or the
+	// reverse) is the failure mode this whole mapping exists to avoid.
+	wantOS, err := ContentOS(opts.Platform)
+	if err != nil {
+		return result, err
+	}
+	if meta.Platform != "" && meta.Platform != wantOS {
+		return result, fmt.Errorf("gog: build %s is platform %q but %q was requested", build.BuildID, meta.Platform, wantOS)
 	}
 	baseProduct := meta.BaseProductID
 	if baseProduct == "" {

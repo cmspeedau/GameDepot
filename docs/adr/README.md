@@ -15,5 +15,6 @@ old one instead of rewriting history.
 | [0007](0007-auth-model.md) | Auth model: sessions and pairing tokens | Accepted |
 | [0008](0008-chunk-size.md) | Chunk size, 4 MiB for v1 | Accepted |
 | [0009](0009-legacy-archive-as-spec.md) | The archived GameDepot is our own history, not a third party | Accepted |
+| [0010](0010-gog-platform-handling.md) | GOG platform handling; Linux builds refused, not downgraded | Accepted |
 
 New records start from `template.md`.
