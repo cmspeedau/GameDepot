@@ -48,18 +48,18 @@ func (s *Server) handleGameRecipe(c *gin.Context) {
 		_ = json.Unmarshal(recipe.Profile, &profile)
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"id":           uuid.UUID(recipe.ID.Bytes).String(),
-		"gameId":       uuid.UUID(recipe.GameID.Bytes).String(),
-		"versionId":    func() string {
+		"id":     uuid.UUID(recipe.ID.Bytes).String(),
+		"gameId": uuid.UUID(recipe.GameID.Bytes).String(),
+		"versionId": func() string {
 			if recipe.VersionID.Valid {
 				return uuid.UUID(recipe.VersionID.Bytes).String()
 			}
 			return ""
 		}(),
-		"profile":      profile,
-		"source":       recipe.Source,
+		"profile":       profile,
+		"source":        recipe.Source,
 		"compatibility": recipe.Compatibility,
-		"createdAt":    recipe.CreatedAt.Time.UTC().Format("2006-01-02T15:04:05Z07:00"),
-		"updatedAt":    recipe.UpdatedAt.Time.UTC().Format("2006-01-02T15:04:05Z07:00"),
+		"createdAt":     recipe.CreatedAt.Time.UTC().Format("2006-01-02T15:04:05Z07:00"),
+		"updatedAt":     recipe.UpdatedAt.Time.UTC().Format("2006-01-02T15:04:05Z07:00"),
 	})
 }

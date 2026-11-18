@@ -24,6 +24,13 @@ func (s *Server) depotRoot() string {
 	return filepath.Join(s.cfg.DataDir, "depot")
 }
 
+// stagingRoot holds the temporary tree a store ingest assembles before chunking it into
+// the depot. It is scratch space: contents are removed when a run finishes, including a
+// failed one, and the scheduled cleanup may sweep leftovers older than a day.
+func (s *Server) stagingRoot() string {
+	return filepath.Join(s.cfg.DataDir, "staging")
+}
+
 // ---------- libraries ----------
 
 func (s *Server) handleLibrariesPage(c *gin.Context) {

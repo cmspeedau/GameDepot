@@ -10,8 +10,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/cmspeedau/gamedepot/internal/depot"
 	db "github.com/cmspeedau/gamedepot/internal/database/db"
+	"github.com/cmspeedau/gamedepot/internal/depot"
 )
 
 // fakeStore implements Store with canned rows and call counts.

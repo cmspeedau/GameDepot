@@ -1,0 +1,36 @@
+{{if .Error}}
+<p class="text-sm text-red-300">{{.Error}}</p>
+{{else if not .Games}}
+<p class="text-sm text-zinc-500">No entitled games found for this account.</p>
+{{else}}
+<p class="text-sm text-zinc-400 mb-3">{{len .Games}} entitled product(s). Ingesting downloads the files, then
+  builds a release from them like any other library source.</p>
+<table class="w-full text-sm">
+  <thead><tr class="text-left text-zinc-400"><th class="py-2">Title</th><th>Platforms</th><th>Product</th><th></th></tr></thead>
+  <tbody>
+  {{range .Games}}
+    <tr class="border-t border-zinc-800 align-top">
+      <td class="py-2">{{.Title}}</td>
+      <td class="text-zinc-400">{{if .Platforms}}{{range $i, $p := .Platforms}}{{if $i}}, {{end}}{{$p}}{{end}}{{else}}-{{end}}</td>
+      <td class="font-mono text-zinc-500">{{.ID}}</td>
+      <td class="text-right">
+        <form method="post" action="/dashboard/stores/gog/ingest" class="inline-flex items-center gap-2">
+          <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+          <input type="hidden" name="product_id" value="{{.ID}}">
+          <input type="hidden" name="title" value="{{.Title}}">
+          <select name="platform" class="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs">
+            <option value="windows">Windows</option>
+            <option value="macos">macOS</option>
+            <option value="linux">Linux</option>
+          </select>
+          <label class="flex items-center gap-1 text-xs text-zinc-400" title="Download again even if this build is already published">
+            <input type="checkbox" name="force" value="1"> force
+          </label>
+          <button class="rounded bg-blue-600 px-3 py-1 text-xs font-medium">Ingest</button>
+        </form>
+      </td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+{{end}}

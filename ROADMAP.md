@@ -173,7 +173,21 @@ backup.
       noop, conflict with take-server and keep-mine resolutions), plus the Vue saves
       UI. The two-device save round-trip passed. Remaining for this item: a
       Windows/macOS path-template run and the store side below.
-- [ ] Store ingestion: GOG first, then Epic, with an encrypted connection store.
+- [~] Store ingestion: GOG first, then Epic, with an encrypted connection store. GOG is
+      ported to Go from this project's archived predecessor (ADR-0009): the code-paste
+      sign-in, the three documented library endpoints with the owned-ids top-up, and
+      content-system acquisition (build list, zlib build meta, depot manifests,
+      per-product secure links, chunk verify on both declared digests). Credentials are
+      sealed with AES-256-GCM under `GAMEDEPOT_CREDENTIAL_KEY`; the store refuses to boot
+      without it, refresh-token rotation is written back, and a rejected credential flags
+      the connection instead of retrying. `internal/ingest` turns an acquired directory
+      into a release through the existing depot builder, skipping unchanged builds and
+      de-duplicating concurrent requests per product. Dashboard: connect, disconnect,
+      entitled library, ingest with platform and force, task page for progress.
+      Verified live against production GOG for the OAuth path (a bogus code reached GOG's
+      real `invalid_grant`), plus CSRF gating, token-never-in-page, and the
+      undecryptable-credential flag through Postgres. Not yet done: a real end-to-end
+      ingest with a human's GOG account, and Epic.
 - [ ] Metadata providers with a manual fallback.
 - [ ] Cache node for LAN and offline use (see below).
 

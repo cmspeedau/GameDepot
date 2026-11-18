@@ -20,6 +20,7 @@ const (
 type Task struct {
 	ID        uuid.UUID
 	Kind      string
+	Target    string
 	State     State
 	Progress  float64
 	Log       string
@@ -100,15 +101,33 @@ func New() *Registry {
 }
 
 func (r *Registry) Start(kind string, owner uuid.UUID, fn func(context.Context, *Task) error) *Task {
+	return r.StartFor(kind, "", owner, fn)
+}
+
+// StartFor starts a task tagged with a target, and returns the already-running task
+// when one for the same kind and target exists. A store ingest of a 40 GB title must
+// not run twice because someone refreshed the dashboard, and the caller does not need
+// to know whether it got a new task or the existing one: the redirect goes to the same
+// task page either way. An empty target means "no dedupe".
+func (r *Registry) StartFor(kind, target string, owner uuid.UUID, fn func(context.Context, *Task) error) *Task {
+	r.mu.Lock()
+	if target != "" {
+		for _, existing := range r.tasks {
+			if existing.Kind == kind && existing.Target == target && existing.State == StateRunning {
+				r.mu.Unlock()
+				return existing
+			}
+		}
+	}
 	t := &Task{
 		ID:        uuid.New(),
 		Kind:      kind,
+		Target:    target,
 		State:     StateRunning,
 		OwnerID:   owner,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	r.mu.Lock()
 	r.tasks[t.ID] = t
 	r.mu.Unlock()
 

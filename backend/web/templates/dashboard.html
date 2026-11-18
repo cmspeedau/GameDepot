@@ -12,7 +12,34 @@
   <main class="mx-auto max-w-3xl px-6 py-8">
     <h1 class="text-xl font-semibold mb-4">Dashboard</h1>
     {{template "flash" .}}
-    <p class="text-zinc-400">Scaffold is running. More arrives in phase 2.</p>
+    <ul class="grid gap-3 sm:grid-cols-2 text-sm">
+      <li class="rounded border border-zinc-800 p-4">
+        <a href="/dashboard/games" class="font-medium text-blue-400 hover:underline">Games</a>
+        <p class="text-zinc-400 mt-1">Catalog, versions and launch entries.</p>
+      </li>
+      <li class="rounded border border-zinc-800 p-4">
+        <a href="/dashboard/releases/new" class="font-medium text-blue-400 hover:underline">Publish a release</a>
+        <p class="text-zinc-400 mt-1">Build a version from a directory on disk.</p>
+      </li>
+      <li class="rounded border border-zinc-800 p-4">
+        <a href="/dashboard/libraries" class="font-medium text-blue-400 hover:underline">Libraries</a>
+        <p class="text-zinc-400 mt-1">Who can see which games.</p>
+      </li>
+      <li class="rounded border border-zinc-800 p-4">
+        <a href="/dashboard/clients" class="font-medium text-blue-400 hover:underline">Clients</a>
+        <p class="text-zinc-400 mt-1">Approve pairing codes from desktop installs.</p>
+      </li>
+      <li class="rounded border border-zinc-800 p-4">
+        <a href="/dashboard/users" class="font-medium text-blue-400 hover:underline">Users</a>
+        <p class="text-zinc-400 mt-1">Accounts, invitations and sessions.</p>
+      </li>
+      {{if .StoresEnabled}}
+      <li class="rounded border border-zinc-800 p-4">
+        <a href="/dashboard/stores" class="font-medium text-blue-400 hover:underline">Store accounts</a>
+        <p class="text-zinc-400 mt-1">Connect GOG and ingest entitled games.</p>
+      </li>
+      {{end}}
+    </ul>
   </main>
 </body>
 </html>

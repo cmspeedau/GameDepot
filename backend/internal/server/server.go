@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"html/template"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -16,8 +17,10 @@ import (
 	"github.com/cmspeedau/gamedepot/internal/auth"
 	"github.com/cmspeedau/gamedepot/internal/config"
 	db "github.com/cmspeedau/gamedepot/internal/database/db"
-	"github.com/cmspeedau/gamedepot/internal/version"
+	"github.com/cmspeedau/gamedepot/internal/ingest"
+	"github.com/cmspeedau/gamedepot/internal/secrets"
 	"github.com/cmspeedau/gamedepot/internal/tasks"
+	"github.com/cmspeedau/gamedepot/internal/version"
 	"github.com/cmspeedau/gamedepot/web"
 )
 
@@ -28,12 +31,28 @@ type Server struct {
 	sessions  *auth.SessionManager
 	limiter   *auth.RateLimiter
 	tasks     *tasks.Registry
+	secrets   *secrets.Box
+	ingestSvc *ingest.Service
 	templates *template.Template
 	static    fs.FS
 }
 
 func New(cfg config.Config, pool *pgxpool.Pool) *Server {
 	s := &Server{cfg: cfg, pool: pool, db: db.New(pool), sessions: auth.NewSessionManager(pool), limiter: auth.NewRateLimiter(), tasks: tasks.New()}
+
+	// The sealing key is optional for the rest of the server; store routes refuse to
+	// run without it. config.Load has already rejected a malformed key and a store
+	// that is enabled without one, so a parse failure here means the value disappeared
+	// between validation and use, which is reported rather than swallowed.
+	if cfg.CredentialKey != "" {
+		box, err := secrets.NewBox(cfg.CredentialKey)
+		if err != nil {
+			slog.Error("credential key", "err", err)
+		} else {
+			s.secrets = box
+		}
+	}
+	s.ingestSvc = ingest.NewService(s.db, s.stagingRoot(), s.depotRoot())
 
 	tmpl, err := template.New("").Funcs(template.FuncMap{
 		"uuid": func(u pgtype.UUID) string {
@@ -125,6 +144,13 @@ func (s *Server) Handler() http.Handler {
 	dash.GET("/tasks/:id", s.handleTaskPage)
 	dash.POST("/releases/:digest/verify", s.handleVerifyRelease)
 	dash.POST("/objects", s.handleObjectUpload)
+
+	// Store accounts and ingestion (gated on GAMEDEPOT_STORE + a credential key).
+	dash.GET("/stores", s.handleStoresPage)
+	dash.POST("/stores/gog/connect", s.handleGogConnect)
+	dash.GET("/stores/gog/library", s.handleGogLibrary)
+	dash.POST("/stores/gog/ingest", s.handleGogIngest)
+	dash.POST("/stores/connection/:id/disconnect", s.handleStoreDisconnect)
 
 	// Client API (JSON).
 	api := r.Group("/api/v1")
@@ -370,8 +396,9 @@ func (s *Server) handleDashboard(c *gin.Context) {
 		return
 	}
 	s.render(c, "dashboard.html", gin.H{
-		"Title":    "Dashboard",
-		"Username": user.Username,
+		"Title":         "Dashboard",
+		"Username":      user.Username,
+		"StoresEnabled": s.storesReady(),
 	})
 }
 

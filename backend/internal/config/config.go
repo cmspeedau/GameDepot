@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cmspeedau/gamedepot/internal/secrets"
 )
 
 type Config struct {
@@ -87,6 +89,14 @@ func Load() (Config, error) {
 		c.StoreEnabled = b
 	}
 	c.CredentialKey = strings.TrimSpace(os.Getenv("GAMEDEPOT_CREDENTIAL_KEY"))
+	// Validate the key's shape at boot rather than at the first credential write: the
+	// rest of the server treats a missing key as "store off", and a malformed key is
+	// indistinguishable from a missing one unless it is checked here.
+	if c.CredentialKey != "" {
+		if _, err := secrets.ParseKey(c.CredentialKey); err != nil {
+			return c, err
+		}
+	}
 
 	// Store features cannot run without a sealing key: credentials would have to be
 	// stored in plaintext. Fail at boot rather than at the first connection save.

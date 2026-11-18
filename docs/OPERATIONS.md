@@ -99,6 +99,47 @@ disable them on all but one replica if you ever run more than one.
   deployed and `GET /api/v1/ready` returns `200`. The boot log line `listening` carries
   the same version, so the log and the endpoint cannot drift apart.
 
+## Store accounts
+
+Ingesting from GOG (and, later, Epic) is off by default and needs two variables:
+
+```bash
+GAMEDEPOT_STORE=true
+GAMEDEPOT_CREDENTIAL_KEY=$(openssl rand -hex 32)   # or -base64 32
+```
+
+The server refuses to start with the store enabled and no key, and refuses a
+malformed key, because the alternative is storing someone's refresh token as
+plaintext.
+
+Sign in on `/dashboard/stores`. GOG only accepts its own `embed.gog.com`
+redirect for the public client this project authenticates as, so there is no
+callback to catch: after signing in, the browser lands on a page whose address
+bar contains
+`code=...`, and that is pasted into the dashboard. The code is single-use. The
+resulting token pair is sealed with the credential key and stored in
+`store_connections`; the UI only ever shows the account label and expiry.
+
+- Access tokens are renewed before they expire, and GOG rotates the refresh
+  token on every renewal, so both values are written back each time.
+- When GOG rejects a credential the connection is flagged `needs sign-in` rather
+  than retried in a loop. Reconnect to clear it; disconnecting deletes the row,
+  tokens and all.
+- If you change `GAMEDEPOT_CREDENTIAL_KEY`, existing sealed rows cannot be
+  decrypted: the connection is flagged and must be signed in again. Rotate by
+  reconnecting, not by editing the database.
+
+**Disk.** An ingest downloads into `DATA/staging` before chunking into the
+depot, so a title needs roughly twice its size at peak: once assembled, once as
+objects. Staging is removed when the job finishes, including a failed one, so
+leftover staging is the first thing to check when a data volume fills
+unexpectedly.
+
+**Repeats.** One ingest per product and platform runs at a time. Requesting the
+same product again while it is running returns the existing task rather than
+starting a second download, and a product whose provider build has not changed
+completes with no transfer at all. Tick `force` to re-download deliberately.
+
 ## Health and monitoring
 
 - `GET /api/v1/health` is the liveness probe and returns `204 No Content` without
@@ -118,8 +159,12 @@ disable them on all but one replica if you ever run more than one.
 
 ## Common problems
 
-**Clients cannot pair.** Check `EXTERNAL_URL` and the reverse proxy's WebSocket upgrade
-for `/api/v1/client/auth/code/ws`. The dashboard approval also needs a signed-in admin.
+**Clients cannot pair.** The desktop requests a code, and an admin approves it on
+`/dashboard/clients`. If the code never reaches the dashboard, check
+`EXTERNAL_URL`: the desktop posts to the origin you advertise, so a wrong or
+proxy-mismatched value sends the request somewhere else. An invalid, expired or
+already-claimed code returns 410 and an unapproved one 409, and both surface in
+the desktop's error line.
 
 **Downloads start and fail with a checksum error.** The depot and the manifest disagree.
 Run the integrity task from the dashboard. If it reports missing objects, restore `DATA`
