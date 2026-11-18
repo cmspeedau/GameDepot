@@ -56,6 +56,18 @@ type Result struct {
 	Launches    []Launch
 }
 
+// BuildInfo is the newest build a provider would acquire for a product.
+type BuildInfo struct {
+	ID          string
+	VersionName string
+}
+
+// BuildLister is implemented by providers that can answer "is there anything newer?"
+// without downloading. Ingest uses it to skip titles that are already current.
+type BuildLister interface {
+	LatestBuild(ctx context.Context, productID, platform string) (BuildInfo, error)
+}
+
 // Provider acquires titles for one storefront using an already authenticated account.
 type Provider interface {
 	// Name is the provider key stored in store_connections.provider.

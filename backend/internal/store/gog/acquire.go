@@ -187,6 +187,23 @@ func containsAny(values []string, want ...string) bool {
 	return false
 }
 
+// LatestBuild answers the update check without downloading anything: the build the
+// next acquire would use, Master preferred over a newer Experimental branch.
+func (c *Client) LatestBuild(ctx context.Context, productID, platform string) (store.BuildInfo, error) {
+	if platform == "" {
+		platform = "windows"
+	}
+	builds, err := c.Builds(ctx, productID, platform)
+	if err != nil {
+		return store.BuildInfo{}, err
+	}
+	build, err := pickBuilds(builds, "")
+	if err != nil {
+		return store.BuildInfo{}, err
+	}
+	return store.BuildInfo{ID: build.BuildID, VersionName: build.VersionName}, nil
+}
+
 // Acquire downloads one product's files into dest/<versionName>/ and reports what it
 // wrote. The result is a plain directory tree: the caller hands it to
 // internal/depot.BuildRelease like any other library source.
