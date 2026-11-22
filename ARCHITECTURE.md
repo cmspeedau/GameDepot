@@ -141,9 +141,41 @@ the game. Objects are ciphertext and useless without that key.
 
 ## 5. Authentication and authorization
 
-### 5.1 Dashboard sessions
+### 5.1 Password storage and verification
 
-- Sign-in matches `users.username` and verifies an Argon2id hash.
+Passwords are one-way hashed using **Argon2id**, never encrypted for later recovery and
+never stored or logged in plaintext. This is the password-hashing reference profile:
+
+- Argon2 version 19 (`v=19`).
+- Memory cost: 65,536 KiB (64 MiB); time cost: 1 iteration; parallelism: 4 lanes.
+- Random, cryptographically secure 16-byte salt for each password hash.
+- 32-byte derived output.
+- Store the self-describing PHC string, including algorithm, version, parameters, salt,
+  and derived hash, in the user's password-hash field. Use unpadded standard Base64 for
+  the encoded salt and hash as specified by the PHC representation.
+- Verification derives a candidate using the stored salt and parameters, then compares
+  the derived output to the stored hash in constant time.
+
+Treat the values above as the initial compatibility profile. Before deriving during
+verification, strictly parse the complete PHC string, accept only supported algorithms
+and versions, validate salt and output lengths, and enforce explicit safe upper and
+lower bounds on memory, iterations, and parallelism. Reject malformed, unsupported, or
+out-of-policy hashes without invoking Argon2. Never let database content select
+unbounded computational costs. Keep verification errors distinct internally from a
+normal password mismatch; user-facing sign-in responses must not reveal whether an
+account exists or which part of authentication failed.
+
+Use the maintained Argon2 implementation for the language/runtime in use; other
+implementations must produce and verify compatible PHC strings. Reassess the profile
+against current security guidance and server capacity as part of security reviews. When
+parameters change, retain verification support for existing valid hashes and rehash
+successful logins to the current profile. Password changes and resets must use the same
+hashing path; reset tokens are separate, random, single-use, expiring credentials and
+are stored only as hashes.
+
+### 5.2 Dashboard sessions
+
+- Sign-in matches `users.username` and verifies an Argon2id hash using section 5.1.
 - `sessions` stores a SHA-256 hash of the cookie token, not the token itself, plus a
   CSRF secret, user agent, IP and expiry.
 - Cookie: 32 random bytes, base64url. Session lifetime 30 days, 90 with remember me.
@@ -151,7 +183,7 @@ the game. Objects are ciphertext and useless without that key.
 - Sign-out deletes the row. A dashboard page lists sessions and revokes them.
 - Failed sign-ins are rate limited per IP and per username.
 
-### 5.2 First run
+### 5.3 First run
 
 - On boot with no users and no completed setup, the server creates a setup token, stores
   its hash in `settings`, and prints the token once at `info` level.
@@ -160,14 +192,14 @@ the game. Objects are ciphertext and useless without that key.
 - While setup is incomplete, every other route except health returns 503 with a link to
   `/setup`.
 
-### 5.3 Invitations
+### 5.4 Invitations
 
 - An admin creates an invitation. The server returns a single-use code once and stores
   its hash.
 - Signup requires a valid, unused, unexpired invitation.
 - Redemption creates the user and marks the invitation used in one transaction.
 
-### 5.4 Device pairing
+### 5.5 Device pairing
 
 1. Desktop calls `POST /api/v1/pairing/initiate` with a device name and platform. It
    receives an eight-character code (Crockford base32, uppercase) valid for ten minutes.
@@ -181,7 +213,7 @@ the game. Objects are ciphertext and useless without that key.
 Codes are rate limited, single use, and expire. A claimed token can be revoked from the
 dashboard, which takes effect on the next request.
 
-### 5.5 Scopes
+### 5.6 Scopes
 
 Client tokens carry a scope list, fixed at pairing:
 
