@@ -1,11 +1,45 @@
 {{define "nav"}}
-<nav class="border-b border-zinc-800/60 bg-zinc-950/80 backdrop-blur px-6 py-4 flex items-center justify-between sticky top-0 z-40">
-  <a href="/dashboard" class="font-semibold tracking-tight hover:text-blue-400 transition-colors">GameDepot</a>
-  <div class="flex items-center gap-4 text-sm text-zinc-400">
-    {{if .Username}}<span class="text-zinc-300">{{.Username}}</span>{{end}}
-    <form method="post" action="/signout"><button class="hover:text-zinc-100 transition-colors">Sign out</button></form>
+<nav class="sticky top-0 z-50 border-b border-zinc-800/80 bg-zinc-950/90 backdrop-blur-md">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="flex h-14 items-center justify-between gap-4">
+      <a href="/dashboard" class="flex items-center gap-2 shrink-0">
+        <span class="text-lg font-bold tracking-tight bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">GameDepot</span>
+      </a>
+      <div class="hidden md:flex items-center gap-1 text-sm">
+        <a data-nav href="/dashboard" class="nav-tab">Dashboard</a>
+        <a data-nav href="/dashboard/games" class="nav-tab">Games</a>
+        <a data-nav href="/dashboard/releases/new" class="nav-tab">Publish</a>
+        <a data-nav href="/dashboard/libraries" class="nav-tab">Libraries</a>
+        {{if .StoresEnabled}}<a data-nav href="/dashboard/stores" class="nav-tab">Stores</a>{{end}}
+        <a data-nav href="/dashboard/users" class="nav-tab">Users</a>
+        <a data-nav href="/dashboard/clients" class="nav-tab">Clients</a>
+      </div>
+      <div class="flex items-center gap-3">
+        <div class="relative" id="user-menu">
+          <button type="button" onclick="document.getElementById('user-dropdown').classList.toggle('hidden')" class="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800/60 transition-colors">
+            <span class="hidden sm:inline">{{if .Username}}{{.Username}}{{else}}Account{{end}}</span>
+            <svg class="h-4 w-4 text-zinc-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
+          </button>
+          <div id="user-dropdown" class="hidden absolute right-0 mt-2 w-48 rounded-lg border border-zinc-800 bg-zinc-900/95 backdrop-blur shadow-xl shadow-black/40 py-1 z-50">
+            <a href="/dashboard" class="block px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors">Dashboard</a>
+            <a href="/dashboard/users" class="block px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors">Users</a>
+            <div class="my-1 border-t border-zinc-800"></div>
+            <form method="post" action="/signout"><button type="submit" class="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors">Sign out</button></form>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
+  <script>
+    (function(){var p=location.pathname;document.querySelectorAll('[data-nav]').forEach(function(a){if(p===a.getAttribute('href')||p.startsWith(a.getAttribute('href')+'/')){a.classList.add('nav-tab-active');}});document.addEventListener('click',function(e){var d=document.getElementById('user-dropdown');if(d&&!d.classList.contains('hidden')&&!e.target.closest('#user-menu')){d.classList.add('hidden');}});})();
+  </script>
 </nav>
+<style>
+  .nav-tab{display:inline-flex;align-items:center;padding:0.375rem 0.75rem;border-radius:0.5rem;color:#a1a1aa;font-size:0.875rem;font-weight:500;transition:color .15s,background-color .15s;position:relative;}
+  .nav-tab:hover{color:#f4f4f5;background-color:rgba(39,39,42,0.6);}
+  .nav-tab-active{color:#60a5fa;background-color:rgba(59,130,246,0.1);}
+  .nav-tab-active::after{content:'';position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);width:16px;height:2px;border-radius:1px;background:#60a5fa;}
+</style>
 {{end}}
 
 {{define "flash"}}
