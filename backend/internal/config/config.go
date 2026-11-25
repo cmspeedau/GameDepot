@@ -20,8 +20,9 @@ type Config struct {
 	AutoMigrate bool
 
 	// Maintenance intervals for scheduled jobs. Zero disables the loop.
-	IntegrityInterval time.Duration
-	CleanupInterval   time.Duration
+	IntegrityInterval   time.Duration
+	CleanupInterval     time.Duration
+	StoreUpdateInterval time.Duration
 
 	// Store ingestion (phase 7). StoreEnabled gates the provider routes;
 	// CredentialKey is the raw GAMEDEPOT_CREDENTIAL_KEY value used to seal stored
@@ -32,14 +33,15 @@ type Config struct {
 
 func Load() (Config, error) {
 	c := Config{
-		Port:              "4000",
-		ExternalURL:       "http://localhost:4000",
-		LibraryDir:        "./.data/library",
-		DataDir:           "./.data/data",
-		LogLevel:          "info",
-		AutoMigrate:       true,
-		IntegrityInterval: 24 * time.Hour,
-		CleanupInterval:   time.Hour,
+		Port:                "4000",
+		ExternalURL:         "http://localhost:4000",
+		LibraryDir:          "./.data/library",
+		DataDir:             "./.data/data",
+		LogLevel:            "info",
+		AutoMigrate:         true,
+		IntegrityInterval:   24 * time.Hour,
+		CleanupInterval:     time.Hour,
+		StoreUpdateInterval: 6 * time.Hour,
 	}
 
 	if v := os.Getenv("DATABASE_URL"); v != "" {
@@ -80,6 +82,13 @@ func Load() (Config, error) {
 			return c, fmt.Errorf("invalid GAMEDEPOT_CLEANUP_INTERVAL: %w", err)
 		}
 		c.CleanupInterval = d
+	}
+	if v := os.Getenv("GAMEDEPOT_STORE_UPDATE_INTERVAL"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return c, fmt.Errorf("invalid GAMEDEPOT_STORE_UPDATE_INTERVAL: %w", err)
+		}
+		c.StoreUpdateInterval = d
 	}
 	if v := os.Getenv("GAMEDEPOT_STORE"); v != "" {
 		b, err := strconv.ParseBool(v)

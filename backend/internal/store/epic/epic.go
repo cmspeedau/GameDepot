@@ -1,5 +1,5 @@
-// Package epic is the Epic Games Store adapter: sign-in, entitled-library listing and
-// build resolution.
+// Package epic is the Epic Games Store adapter: sign-in, entitled-library listing,
+// build resolution and binary install-manifest decoding.
 //
 // Like the GOG adapter this is a Go reimplementation of behaviour this project worked
 // out live in its archived predecessor (ADR-0009). The parts worth knowing are recorded
@@ -7,9 +7,11 @@
 // display names, the redirect-page JSON that users paste instead of a code, and Epic's
 // error body shape with its approval link.
 //
-// Acquisition is not implemented, and says so rather than half-trying: an Epic build's
-// file list lives in a proprietary binary manifest that must be validated against a real
-// sample before its output can be trusted. See ErrManifestDecode.
+// Acquisition resolves a build through the launcher content service, downloads its
+// proprietary binary install manifest, decodes it, and stages the install tree from the
+// chunk extents the manifest declares. The binary layout is reverse engineered rather
+// than officially specified - Epic publishes no format document - so the decoder fails
+// loudly through its sentinels instead of guessing; see ParseEpicBinaryManifest.
 package epic
 
 import (
@@ -21,7 +23,10 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -67,13 +72,6 @@ type Tokens struct {
 	AccountID    string `json:"account_id"`
 	TokenType    string `json:"token_type"`
 }
-
-// ErrManifestDecode is returned by Acquire. The file list of an Epic build is a binary
-// manifest (magic 0x44BEC00C) whose encoding, property lists and chunk message packs are
-// undocumented; decoding it without a real sample to validate against would produce
-// releases that look right and fail on install. Listing and authentication work; the
-// download does not, and is honest about it.
-var ErrManifestDecode = errors.New("epic: build-manifest decoding is not implemented; the format needs validation against a real manifest sample before ingestion can be trusted")
 
 type Client struct {
 	cfg    Config
@@ -524,9 +522,10 @@ func (c *Client) Asset(ctx context.Context, platform, namespace, catalogItemID, 
 	return &parsed.Elements[0], nil
 }
 
-// Acquire is the deliberate gap described on ErrManifestDecode. It resolves the build so
-// the operator sees the real reason (and the manifest they could decode offline) instead
-// of a generic failure at the end of a long download.
+// Acquire resolves the build an Epic product would install, downloads and decodes its
+// binary install manifest, and stages the install tree under the caller's staging
+// directory. Files without chunk extents are skipped, exactly like the GOG adapter skips
+// directories and links.
 func (c *Client) Acquire(ctx context.Context, productID string, opts store.AcquireOptions) (store.Result, error) {
 	namespace, catalogItemID, ok := strings.Cut(productID, "/")
 	if !ok {
@@ -539,7 +538,265 @@ func (c *Client) Acquire(ctx context.Context, productID string, opts store.Acqui
 	if asset == nil {
 		return store.Result{}, fmt.Errorf("epic: no build for %s on %s", productID, opts.Platform)
 	}
-	return store.Result{}, fmt.Errorf("%w (manifest: %s)", ErrManifestDecode, asset.ManifestLocation)
+	if opts.StagingDir == "" {
+		return store.Result{}, store.Configf("a staging directory is required")
+	}
+	manifestBytes, err := c.fetchEpicManifest(ctx, asset)
+	if err != nil {
+		return store.Result{}, err
+	}
+	parsed, err := ParseEpicBinaryManifest(manifestBytes)
+	if err != nil {
+		return store.Result{}, fmt.Errorf("epic: build %s: %w (manifest: %s)", asset.BuildVersion, err, asset.ManifestLocation)
+	}
+	if len(parsed.Files) == 0 {
+		return store.Result{}, fmt.Errorf("epic: build %s lists no files to install", asset.BuildVersion)
+	}
+
+	versionName := firstNonEmpty(asset.BuildVersion, asset.Label)
+	versionDir := filepath.Join(opts.StagingDir, versionName)
+	if err := os.MkdirAll(versionDir, 0o755); err != nil {
+		return store.Result{}, fmt.Errorf("epic: staging: %w", err)
+	}
+
+	bases := epicChunkBases(asset)
+	var (
+		total   int64
+		written int
+	)
+	for i := range parsed.Files {
+		file := parsed.Files[i]
+		if len(file.ChunkParts) == 0 {
+			continue // directories, links and empty entries carry no bytes
+		}
+		n, err := c.writeEpicFile(ctx, versionDir, file, bases)
+		if err != nil {
+			return store.Result{}, err
+		}
+		total += n
+		written++
+	}
+	if written == 0 {
+		return store.Result{}, fmt.Errorf("epic: build %s staged no files", asset.BuildVersion)
+	}
+
+	return store.Result{
+		Dir:         versionDir,
+		Files:       written,
+		TotalSize:   total,
+		BuildID:     firstNonEmpty(asset.BuildVersion, asset.Label),
+		VersionName: versionName,
+		Launches:    epicLaunches(&parsed.Meta),
+	}, nil
+}
+
+// epicChunkBases collects the CDN mirrors an Epic chunk may be served from, most
+// specific first and with the distribution point as the documented fallback.
+func epicChunkBases(asset *AssetInfo) []string {
+	var bases []string
+	add := func(u string) {
+		u = strings.TrimRight(strings.TrimSpace(u), "/")
+		if u == "" || u == "/" {
+			return
+		}
+		for _, existing := range bases {
+			if existing == u {
+				return
+			}
+		}
+		bases = append(bases, u)
+	}
+	for _, u := range asset.ChunkBaseDURLs {
+		add(u)
+	}
+	for i := range asset.Elements {
+		for _, u := range asset.Elements[i].Meta.ChunkBaseURLs {
+			add(u)
+		}
+	}
+	add(asset.DistributionPoint)
+	return bases
+}
+
+// fetchEpicManifest downloads one build's binary install manifest and bounds the read
+// to the same envelope the decoder accepts, so a hostile or corrupt response cannot make
+// the ingest buffer without limit.
+func (c *Client) fetchEpicManifest(ctx context.Context, asset *AssetInfo) ([]byte, error) {
+	target := asset.ManifestLocation
+	if target == "" {
+		return nil, errors.New("epic: resolved build carries no manifest location")
+	}
+	u, err := url.Parse(target)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") {
+		return nil, fmt.Errorf("epic: manifest location %q is not an http(s) URL", target)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return nil, fmt.Errorf("epic: manifest request failed: %w", err)
+	}
+	req.Header.Set("Accept", "application/octet-stream")
+	req.Header.Set("Authorization", "Bearer "+c.tokens.AccessToken)
+	req.Header.Set("User-Agent", defaultUserAgent)
+	resp, err := c.cfg.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("epic: manifest download failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return nil, fmt.Errorf("epic: %w", store.ErrReauth)
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		return nil, epicError(resp.StatusCode, body)
+	}
+	if declared := resp.Header.Get("Content-Length"); declared != "" {
+		if n, err := strconv.ParseInt(declared, 10, 64); err == nil && n > epicManifestMaxBytes {
+			return nil, fmt.Errorf("epic: manifest exceeds the accepted size limit (%d bytes)", n)
+		}
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, epicManifestMaxBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("epic: manifest response unreadable: %w", err)
+	}
+	if int64(len(body)) > epicManifestMaxBytes {
+		return nil, fmt.Errorf("epic: manifest exceeds the accepted size limit (%d bytes)", len(body))
+	}
+	return body, nil
+}
+
+// downloadEpicChunk fetches one content-addressed chunk, trying each CDN mirror and
+// both of Epic's chunk path layouts in turn.
+func (c *Client) downloadEpicChunk(ctx context.Context, bases []string, guid [4]uint32) ([]byte, error) {
+	normalized := strings.ToLower(fmt.Sprintf("%08x%08x%08x%08x", guid[0], guid[1], guid[2], guid[3]))
+	variants := []string{
+		"ChunksV4/" + normalized[:2] + "/" + normalized + ".chunk",
+		normalized + ".chunk",
+	}
+	for _, base := range bases {
+		clean := strings.TrimRight(base, "/")
+		for _, variant := range variants {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, clean+"/"+variant, nil)
+			if err != nil {
+				return nil, fmt.Errorf("epic: chunk %x request failed: %w", guid, err)
+			}
+			req.Header.Set("Accept", "*/*")
+			req.Header.Set("Authorization", "Bearer "+c.tokens.AccessToken)
+			req.Header.Set("User-Agent", defaultUserAgent)
+			resp, err := c.cfg.HTTPClient.Do(req)
+			if err != nil {
+				continue // try the next mirror
+			}
+			if resp.StatusCode != http.StatusOK {
+				resp.Body.Close()
+				continue
+			}
+			data, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+			resp.Body.Close()
+			if err != nil {
+				return nil, fmt.Errorf("epic: chunk %x unreadable: %w", guid, err)
+			}
+			return data, nil
+		}
+	}
+	return nil, fmt.Errorf("epic: no chunk mirror served chunk %s", normalized)
+}
+
+// writeEpicFile assembles one decoded file from its chunk extents and moves it into
+// the staging tree. The assembled bytes are verified against the declared file size and
+// the unix executable flag from the manifest before the file is put in place.
+func (c *Client) writeEpicFile(ctx context.Context, root string, file EpicManifestFile, bases []string) (int64, error) {
+	if len(file.ChunkParts) == 0 {
+		return 0, nil
+	}
+	if err := unsafeEpicPath(file.Path); err != nil {
+		return 0, err
+	}
+	data := make([]byte, file.FileSize)
+	for _, part := range file.ChunkParts {
+		chunk, err := c.downloadEpicChunk(ctx, bases, part.Guid)
+		if err != nil {
+			return 0, fmt.Errorf("epic: %s: %w", file.Path, err)
+		}
+		if int64(len(chunk)) > int64(part.Size) {
+			return 0, fmt.Errorf("epic: %s: chunk %x is %d bytes, manifest declared %d", file.Path, part.Guid, len(chunk), part.Size)
+		}
+		if int64(part.FileOffset)+int64(part.Size) > int64(file.FileSize) {
+			return 0, fmt.Errorf("epic: %s: chunk at offset %d exceeds file size %d", file.Path, part.FileOffset, file.FileSize)
+		}
+		copy(data[part.FileOffset:], chunk)
+	}
+
+	target := filepath.Join(root, filepath.FromSlash(file.Path))
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return 0, fmt.Errorf("epic: staging: %w", err)
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(target), ".epic-*")
+	if err != nil {
+		return 0, fmt.Errorf("epic: staging: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer func() {
+		tmp.Close()
+		os.Remove(tmpName) // no-op once the rename succeeded
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		return 0, fmt.Errorf("epic: staging: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		return 0, fmt.Errorf("epic: staging: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return 0, fmt.Errorf("epic: staging: %w", err)
+	}
+	mode := os.FileMode(0o644)
+	if file.Flags&epicUnixExecutable != 0 {
+		mode = os.FileMode(0o755)
+	}
+	if err := os.Chmod(tmpName, mode); err != nil {
+		return 0, fmt.Errorf("epic: staging: %w", err)
+	}
+	if err := os.Rename(tmpName, target); err != nil {
+		return 0, fmt.Errorf("epic: staging: %w", err)
+	}
+	return file.FileSize, nil
+}
+
+// epicLaunches turns the launch fields of a decoded manifest into the launch entries
+// the release is seeded with. Builds that declare no executable install nothing playable.
+func epicLaunches(meta *EpicManifestMeta) []store.Launch {
+	if meta == nil || meta.LaunchExe == "" {
+		return nil
+	}
+	args := []string{}
+	if meta.LaunchCommand != "" {
+		args = strings.Fields(meta.LaunchCommand)
+	}
+	return []store.Launch{{
+		Name: firstNonEmpty(meta.AppName, "Play"),
+		Exe:  meta.LaunchExe,
+		Args: args,
+	}}
+}
+
+// unsafeEpicPath validates a manifest-declared file path before it reaches the staging
+// tree: relative, forward-slash separated, no traversal, no drive letters.
+func unsafeEpicPath(path string) error {
+	clean := filepath.ToSlash(path)
+	if clean == "" || clean == "." || clean == "/" || strings.HasPrefix(clean, "/") {
+		return fmt.Errorf("epic: unsafe file path %q", path)
+	}
+	if len(clean) >= 2 && clean[1] == ':' {
+		return fmt.Errorf("epic: unsafe file path %q", path)
+	}
+	for _, part := range strings.Split(clean, "/") {
+		if part == "" || part == "." || part == ".." {
+			return fmt.Errorf("epic: unsafe file path %q", path)
+		}
+	}
+	return nil
 }
 
 // platformName maps this project's platform keys onto Epic's.

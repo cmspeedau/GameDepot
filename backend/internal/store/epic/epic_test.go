@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -178,7 +179,8 @@ func TestRefreshRotatesAndRequiresToken(t *testing.T) {
 	}
 }
 
-// libraryStub serves the library, catalog and assets services from one server.
+// libraryStub serves the library, catalog, assets, manifest and chunk services from one
+// test server.
 type libraryStub struct {
 	server    *httptest.Server
 	pages     []map[string]any // library pages, served in order
@@ -187,6 +189,8 @@ type libraryStub struct {
 	assetStat int
 	calls     []string
 	auth      string
+	manifest  []byte // binary build manifest served under /manifest/
+	chunk     []byte // content served under /chunk/
 }
 
 func newLibraryStub(t *testing.T, s *libraryStub) {
@@ -230,6 +234,16 @@ func newLibraryStub(t *testing.T, s *libraryStub) {
 			return
 		}
 		writeJSON(w, s.asset)
+	})
+	mux.HandleFunc("/manifest/", func(w http.ResponseWriter, r *http.Request) {
+		if len(s.manifest) == 0 {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Write(s.manifest)
+	})
+	mux.HandleFunc("/chunk/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write(s.chunk)
 	})
 	srv := httptest.NewServer(mux)
 	s.server = srv
@@ -410,11 +424,66 @@ func TestLatestBuildUsesAsset(t *testing.T) {
 	}
 }
 
-func TestAcquireRefusesWithoutTheManifestDecoder(t *testing.T) {
-	manifestURL := "https://cdn.example/Manifest_15"
+func TestAcquireFetchesDecodesAndStagesEpicBuild(t *testing.T) {
+	chunkBody := []byte("epic chunk payload")
 	s := &libraryStub{
 		auth:  "Bearer test-token",
-		asset: map[string]any{"elements": []any{map[string]any{"buildVersion": "b1", "manifestLocation": manifestURL}}},
+		asset: map[string]any{"elements": []any{map[string]any{"buildVersion": "b1", "label": "v1"}}},
+	}
+	newLibraryStub(t, s)
+	s.asset = map[string]any{"elements": []any{map[string]any{
+		"buildVersion": "4226454", "label": "v1",
+		"manifestLocation":  s.server.URL + "/manifest/build.bin",
+		"distributionPoint": s.server.URL + "/chunk/",
+	}}}
+	s.chunk = chunkBody
+	m := EpicManifestMeta{
+		DataVersion:   0,
+		FeatureLevel:  17,
+		AppName:       "Hitman",
+		BuildVersion:  "4226454",
+		LaunchExe:     "Retail/HITMAN.exe",
+		LaunchCommand: "",
+	}
+	files := []EpicManifestFile{{
+		Path:       "Retail/HITMAN.exe",
+		Symlink:    "",
+		Sha1:       hexSHA1(make([]byte, 20)),
+		Flags:      epicUnixExecutable,
+		ChunkParts: []EpicManifestChunkPart{{Guid: [4]uint32{0x11223344, 0x55667788, 0x99aabbcc, 0xddeeff00}, Offset: 0, Size: uint32(len(chunkBody)), FileOffset: 0}},
+		FileSize:   int64(len(chunkBody)),
+	}}
+	s.manifest = epicManifest(m, files)
+
+	dir := t.TempDir()
+	result, err := s.client().Acquire(context.Background(), "ns1/item1", store.AcquireOptions{
+		StagingDir: dir, Platform: "windows",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Files != 1 || result.TotalSize != int64(len(chunkBody)) {
+		t.Fatalf("result = %+v", result)
+	}
+	if result.BuildID != "4226454" || result.VersionName != "4226454" {
+		t.Fatalf("result identity = %+v", result)
+	}
+	if len(result.Launches) != 1 || result.Launches[0].Exe != "Retail/HITMAN.exe" {
+		t.Fatalf("launches = %+v", result.Launches)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "4226454", "Retail", "HITMAN.exe"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(chunkBody) {
+		t.Fatalf("staged file = %q, want %q", got, chunkBody)
+	}
+}
+
+func TestAcquireRefusesWhenManifestCannotBeDecoded(t *testing.T) {
+	s := &libraryStub{
+		auth:  "Bearer test-token",
+		asset: map[string]any{"elements": []any{map[string]any{"buildVersion": "b1", "manifestLocation": "https://cdn.example/Manifest_15"}}},
 	}
 	newLibraryStub(t, s)
 
@@ -425,18 +494,36 @@ func TestAcquireRefusesWithoutTheManifestDecoder(t *testing.T) {
 	if err == nil {
 		t.Fatal("acquisition must not silently produce nothing")
 	}
-	if !errors.Is(err, ErrManifestDecode) {
-		t.Fatalf("err = %v, want ErrManifestDecode", err)
-	}
-	// The operator is told which manifest could not be decoded, so they can supply a
-	// sample or check the build by hand.
-	if !strings.Contains(err.Error(), manifestURL) {
+	if !strings.Contains(err.Error(), "https://cdn.example/Manifest_15") {
 		t.Fatalf("error should name the manifest: %v", err)
 	}
 	// Nothing was written into staging.
 	entries, _ := readDirNames(dir)
 	if len(entries) != 0 {
 		t.Fatalf("staging should be empty, found %v", entries)
+	}
+}
+
+func TestAcquireReportsUndecodableManifestFromServer(t *testing.T) {
+	s := &libraryStub{
+		auth:  "Bearer test-token",
+		asset: map[string]any{"elements": []any{map[string]any{"buildVersion": "b1", "manifestLocation": "http://placeholder/Manifest_15"}}},
+	}
+	newLibraryStub(t, s)
+	s.manifest = []byte("this is not an epic manifest")
+	s.asset = map[string]any{"elements": []any{map[string]any{
+		"buildVersion": "b1", "manifestLocation": s.server.URL + "/manifest/build.bin",
+	}}}
+
+	dir := t.TempDir()
+	_, err := s.client().Acquire(context.Background(), "ns1/item1", store.AcquireOptions{
+		StagingDir: dir, Platform: "windows",
+	})
+	if err == nil {
+		t.Fatal("a body that fails the magic check must not acquire")
+	}
+	if !strings.Contains(err.Error(), "magic") {
+		t.Fatalf("err = %v, want the magic mismatch surfaced", err)
 	}
 }
 

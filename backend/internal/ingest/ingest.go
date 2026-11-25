@@ -254,7 +254,56 @@ func (s *Service) Run(ctx context.Context, p store.Provider, opts Options) (Resu
 	return out, nil
 }
 
-// productSiblings lists every platform mapping recorded for this provider product.
+// StoreProductStatus is the result of comparing one recorded store product against the
+// build the provider serves now. It is produced by CheckStoreProducts and is meant for
+// reporting and dashboard display, never for mutating state on its own.
+type StoreProductStatus struct {
+	Provider     string
+	ProductID    string
+	Title        string
+	Platform     string
+	CurrentBuild string
+	LatestBuild  string
+	Outdated     bool
+	Err          error
+}
+
+// CheckStoreProducts compares each recorded product against the build the provider
+// would serve now, without downloading anything. A product with no recorded build is
+// treated as outdated, since it has never been ingested.
+func CheckStoreProducts(ctx context.Context, provider store.Provider, products []db.StoreProduct) []StoreProductStatus {
+	out := make([]StoreProductStatus, 0, len(products))
+	lister, _ := provider.(store.BuildLister)
+	for _, p := range products {
+		status := StoreProductStatus{
+			Provider:  p.Provider,
+			ProductID: p.ProductID,
+			Title:     p.Title,
+			Platform:  p.Platform,
+		}
+		if p.LastBuild.Valid {
+			status.CurrentBuild = p.LastBuild.String
+		}
+		if lister == nil {
+			status.Err = errors.New("ingest: provider does not answer build checks")
+			out = append(out, status)
+			continue
+		}
+		info, err := lister.LatestBuild(ctx, p.ProductID, p.Platform)
+		if err != nil {
+			status.Err = err
+			out = append(out, status)
+			continue
+		}
+		status.LatestBuild = info.ID
+		if !p.LastBuild.Valid || p.LastBuild.String == "" || p.LastBuild.String != info.ID {
+			status.Outdated = true
+		}
+		out = append(out, status)
+	}
+	return out
+}
+
 // Failing to read them is not fatal: the worst case is a fresh game row.
 func (s *Service) productSiblings(ctx context.Context, provider, productID string) []db.StoreProduct {
 	rows, err := s.q.GetStoreProductSiblings(ctx, db.GetStoreProductSiblingsParams{

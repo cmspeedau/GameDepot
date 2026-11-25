@@ -3,9 +3,9 @@
 {{else if not .Games}}
 <p class="text-sm text-zinc-500">No entitled products found for this account.</p>
 {{else}}
-<p class="text-sm text-amber-300 mb-3">Epic titles are listed, not ingested. A build's file
-  list is a binary manifest whose decoding is not implemented here yet, so download cannot
-  start; connecting is read-only.</p>
+<p class="text-sm text-zinc-500 mb-3">Epic builds are acquired: the binary install manifest is
+  downloaded and decoded before the install tree is staged, and chunk downloads stream from
+  Epic's CDN.</p>
 <p class="text-sm text-zinc-400 mb-3">{{len .Games}} product(s).</p>
 <table class="w-full text-sm">
   <thead><tr class="text-left text-zinc-400"><th class="py-2">Title</th><th>Namespace / item</th></tr></thead>

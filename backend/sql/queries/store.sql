@@ -62,7 +62,20 @@ ORDER BY title ASC;
 UPDATE store_products SET last_build = NULL, last_release_digest = NULL, updated_at = now()
 WHERE provider = $1 AND product_id = $2 AND platform = $3;
 
+-- name: ListAllStoreProducts :many
+-- Every ingested store product across providers, newest first. Used by the store
+-- update check to compare each recorded build against what the provider serves now.
+SELECT id, provider, product_id, game_id, title, platform, last_build, last_release_digest, created_at, updated_at
+FROM store_products
+ORDER BY provider ASC, title ASC;
+
 -- name: GetStoreProductSiblings :many
+-- Every mapping for a provider product across platforms, newest first. A title
+-- ingested for Windows and again for macOS is still one game, so the platform-specific
+-- row cannot be the only place the game link is kept.
+SELECT id, provider, product_id, game_id, title, platform, last_build, last_release_digest, created_at, updated_at
+FROM store_products WHERE provider = $1 AND product_id = $2
+ORDER BY updated_at DESC;
 -- Every mapping for a provider product across platforms, newest first. A title
 -- ingested for Windows and again for macOS is still one game, so the platform-specific
 -- row cannot be the only place the game link is kept.

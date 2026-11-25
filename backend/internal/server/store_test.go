@@ -173,7 +173,7 @@ func TestEpicLibraryFragmentRenders(t *testing.T) {
 		t.Fatalf("stores_epic.html: %v", err)
 	}
 	out := buf.String()
-	for _, want := range []string{"Some Racing Game", "ns-one/item-hash", "2 product(s)", "not implemented here yet"} {
+	for _, want := range []string{"Some Racing Game", "ns-one/item-hash", "2 product(s)", "Epic builds are acquired"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("epic fragment missing %q", want)
 		}

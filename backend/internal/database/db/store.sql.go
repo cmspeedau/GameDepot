@@ -214,6 +214,45 @@ func (q *Queries) GetStoreProductSiblings(ctx context.Context, arg GetStoreProdu
 	return items, nil
 }
 
+const listAllStoreProducts = `-- name: ListAllStoreProducts :many
+SELECT id, provider, product_id, game_id, title, platform, last_build, last_release_digest, created_at, updated_at
+FROM store_products
+ORDER BY provider ASC, title ASC
+`
+
+// Every ingested store product across providers, newest first. Used by the store
+// update check to compare each recorded build against what the provider serves now.
+func (q *Queries) ListAllStoreProducts(ctx context.Context) ([]StoreProduct, error) {
+	rows, err := q.db.Query(ctx, listAllStoreProducts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StoreProduct
+	for rows.Next() {
+		var i StoreProduct
+		if err := rows.Scan(
+			&i.ID,
+			&i.Provider,
+			&i.ProductID,
+			&i.GameID,
+			&i.Title,
+			&i.Platform,
+			&i.LastBuild,
+			&i.LastReleaseDigest,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listStoreConnections = `-- name: ListStoreConnections :many
 SELECT id, provider, account_label, account_id, access_token, refresh_token, expires_at, status, created_at, updated_at
 FROM store_connections

@@ -150,13 +150,13 @@ choosing Linux reports that instead of quietly publishing the Windows build. To
 run a Linux title today, ingest its Windows build and launch it through the
 compatibility tool.
 
-**Epic is read-only.** Connecting an Epic account works and lists the catalogue,
-but ingestion is not offered: a build's file list is a binary manifest whose
-decoding this project has not implemented and will not guess at. The page says
-so, and an ingest request fails with `ErrManifestDecode` naming the manifest
-rather than starting a download that cannot finish. The credential store, the
-renewal path and the library listing are all exercised, so adding the decoder
-later needs no other change.
+**Epic.** Epic ingestion is live in the backend: the client resolves a build through the
+launcher content service, downloads the binary install manifest, and decodes it before
+staging the install tree from the chunk extents the manifest declares. A manifest that
+fails any container check fails the acquire with the matching decoder sentinel and names the
+manifest, so an undecodable build never reaches the depot. The credential store, the renewal
+path and the library listing are exercised; live end-to-end acquisition still wants a real
+ingest from the operator's own Epic account.
 
 ## Health and monitoring
 

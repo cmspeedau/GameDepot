@@ -69,7 +69,7 @@
       <li>Open <a class="text-blue-400 underline" href="{{.EpicAuthorizeURL}}" target="_blank" rel="noopener">the Epic sign-in page</a> in a new tab and sign in.</li>
       <li>Epic shows a small JSON document at <span class="font-mono">/id/api/redirect</span>. Select all of it and copy;
         pasting just the <span class="font-mono">code</span> value or the address also works.</li>
-      <li>Epic lists your catalogue but its builds are not downloadable from this instance yet, so connecting is read-only.</li>
+      <li>Epic is connected and its builds are acquired through the same ingest path as GOG.</li>
     </ol>
     <form method="post" action="/dashboard/stores/epic/connect" class="flex gap-2 mb-8">
       <input type="hidden" name="_csrf" value="{{.CSRF}}">

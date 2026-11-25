@@ -117,6 +117,29 @@ func main() {
 			"depot_root", mroot)
 	}
 
+	if cfg.StoreEnabled && cfg.StoreUpdateInterval > 0 {
+		go func() {
+			ticker := time.NewTicker(cfg.StoreUpdateInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					report, err := srv.RunStoreUpdateCheck(ctx)
+					if err != nil {
+						slog.ErrorContext(ctx, "store update check", "err", err)
+						continue
+					}
+					if len(report.Outdated) > 0 {
+						slog.InfoContext(ctx, "store update check: updates available", "count", len(report.Outdated))
+					}
+				}
+			}
+		}()
+		slog.Info("store update check started", "interval", cfg.StoreUpdateInterval.String())
+	}
+
 	httpServer := &http.Server{
 		Addr:         ":" + cfg.Port,
 		Handler:      srv.Handler(),

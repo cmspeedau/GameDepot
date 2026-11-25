@@ -498,3 +498,61 @@ func TestUnwrapSingleDir(t *testing.T) {
 		t.Fatalf("unwrapped %q to %q, want it left alone", other, got)
 	}
 }
+
+func TestCheckStoreProductsReportsOutdatedAndErrors(t *testing.T) {
+	fp := &fakeProvider{name: "gog", buildID: "b2", version: "v2"}
+	products := []db.StoreProduct{
+		{Provider: "gog", ProductID: "p1", Title: "Game One", Platform: "windows", LastBuild: pgtype.Text{String: "b1", Valid: true}},
+		{Provider: "gog", ProductID: "p2", Title: "Game Two", Platform: "windows"}, // never ingested
+	}
+	statuses := CheckStoreProducts(context.Background(), fp, products)
+	if len(statuses) != 2 {
+		t.Fatalf("got %d statuses, want 2", len(statuses))
+	}
+	if !statuses[0].Outdated || statuses[0].CurrentBuild != "b1" || statuses[0].LatestBuild != "b2" {
+		t.Fatalf("status[0] = %+v", statuses[0])
+	}
+	if !statuses[1].Outdated || statuses[1].CurrentBuild != "" {
+		t.Fatalf("never-ingested product must be outdated: %+v", statuses[1])
+	}
+
+	wrapped := &failingLister{provider: fp, err: errors.New("lookup failed")}
+	statuses = CheckStoreProducts(context.Background(), wrapped, products[:1])
+	if statuses[0].Err == nil || statuses[0].Outdated {
+		t.Fatalf("a failed lookup must not be reported as outdated: %+v", statuses[0])
+	}
+
+	statuses = CheckStoreProducts(context.Background(), &plainProvider{name: "gog"}, products[:1])
+	if statuses[0].Err == nil {
+		t.Fatalf("missing BuildLister must be an error: %+v", statuses[0])
+	}
+}
+
+type failingLister struct {
+	provider store.Provider
+	err      error
+}
+
+func (f *failingLister) Name() string { return f.provider.Name() }
+func (f *failingLister) Library(ctx context.Context) ([]store.Game, error) {
+	return f.provider.Library(ctx)
+}
+func (f *failingLister) Acquire(ctx context.Context, productID string, opts store.AcquireOptions) (store.Result, error) {
+	return f.provider.Acquire(ctx, productID, opts)
+}
+func (f *failingLister) LatestBuild(ctx context.Context, productID, platform string) (store.BuildInfo, error) {
+	return store.BuildInfo{}, f.err
+}
+
+type noListerProvider struct{ fakeProvider }
+
+// Override LatestBuild to be absent by shadowing is impossible; instead use a separate type.
+type plainProvider struct{ name string }
+
+func (p *plainProvider) Name() string { return p.name }
+func (p *plainProvider) Library(ctx context.Context) ([]store.Game, error) {
+	return []store.Game{}, nil
+}
+func (p *plainProvider) Acquire(ctx context.Context, productID string, opts store.AcquireOptions) (store.Result, error) {
+	return store.Result{}, nil
+}

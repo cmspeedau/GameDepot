@@ -147,9 +147,83 @@ func (s *Server) handleEpicConnect(c *gin.Context) {
 	c.Redirect(http.StatusFound, "/dashboard/stores?flash=connected")
 }
 
-// handleEpicLibrary lists the account's entitled products. Epic titles are listed but
-// not ingested: the file list of a build is a binary manifest this project cannot yet
-// decode, and the page says so instead of starting a download that cannot finish.
+// providerClient returns a usable provider client for the named provider, or false when
+// no active connection exists. It is the single dispatch point the store update check
+// uses so adding a provider means extending one switch.
+func (s *Server) providerClient(ctx context.Context, provider string) (store.Provider, db.StoreConnection, bool) {
+	switch provider {
+	case "gog":
+		c, conn, ok := s.gogClient(ctx)
+		if !ok {
+			return nil, db.StoreConnection{}, false
+		}
+		return c, conn, true
+	case "epic":
+		c, conn, ok := s.epicClient(ctx)
+		if !ok {
+			return nil, db.StoreConnection{}, false
+		}
+		return c, conn, true
+	default:
+		return nil, db.StoreConnection{}, false
+	}
+}
+
+// StoreUpdateReport summarizes one store update check pass.
+type StoreUpdateReport struct {
+	Checked  int
+	Outdated []ingest.StoreProductStatus
+	Errors   int
+}
+
+// RunStoreUpdateCheck compares every recorded store product against the build the
+// provider serves now and reports which are outdated. It never downloads; ingest is
+// still triggered explicitly by an operator or a later automation step.
+func (s *Server) RunStoreUpdateCheck(ctx context.Context) (StoreUpdateReport, error) {
+	report := StoreUpdateReport{}
+	if !s.storesReady() {
+		return report, nil
+	}
+	products, err := s.db.ListAllStoreProducts(ctx)
+	if err != nil {
+		return report, fmt.Errorf("store update check: list products: %w", err)
+	}
+	byProvider := map[string][]db.StoreProduct{}
+	for _, p := range products {
+		byProvider[p.Provider] = append(byProvider[p.Provider], p)
+	}
+	for provider, ps := range byProvider {
+		client, _, ok := s.providerClient(ctx, provider)
+		if !ok {
+			slog.WarnContext(ctx, "store update check: no active connection", "provider", provider)
+			report.Errors += len(ps)
+			continue
+		}
+		statuses := ingest.CheckStoreProducts(ctx, client, ps)
+		for _, st := range statuses {
+			report.Checked++
+			if st.Err != nil {
+				report.Errors++
+				slog.WarnContext(ctx, "store update check: build lookup failed",
+					"provider", st.Provider, "product", st.ProductID, "platform", st.Platform, "err", st.Err)
+				continue
+			}
+			if st.Outdated {
+				report.Outdated = append(report.Outdated, st)
+				slog.InfoContext(ctx, "store update check: update available",
+					"provider", st.Provider, "product", st.ProductID, "title", st.Title,
+					"platform", st.Platform, "current", st.CurrentBuild, "latest", st.LatestBuild)
+			}
+		}
+	}
+	slog.InfoContext(ctx, "store update check complete",
+		"checked", report.Checked, "outdated", len(report.Outdated), "errors", report.Errors)
+	return report, nil
+}
+
+// handleEpicLibrary lists the account's entitled products. Epic builds are now acquired
+// through the same ingest path as GOG: the binary install manifest is downloaded and
+// decoded before the install tree is staged, and chunk downloads stream from Epic's CDN.
 func (s *Server) handleEpicLibrary(c *gin.Context) {
 	if !s.storeEnabled(c) {
 		return
