@@ -85,6 +85,24 @@
          hx-swap="innerHTML">
       <p class="text-sm text-zinc-500">Loading&hellip;</p>
     </div>
+
+    <h2 class="text-lg mb-2">Connect Ubisoft</h2>
+    <form method="post" action="/dashboard/stores/ubisoft/connect" class="flex gap-2 mb-8">
+      <input type="hidden" name="_csrf" value="{{.CSRF}}">
+      <input name="email" placeholder="email"
+             class="flex-1 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-sm">
+      <input name="password" type="password" placeholder="password"
+             class="flex-1 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-sm">
+      <button class="rounded bg-blue-600 px-4 py-2 text-sm font-medium">Connect</button>
+    </form>
+
+    <h2 class="text-lg mb-2">Ubisoft library</h2>
+    <div id="ubisoft-library"
+         hx-get="/dashboard/stores/ubisoft/library"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+      <p class="text-sm text-zinc-500">Loading&hellip;</p>
+    </div>
   </main>
 </body>
 </html>

@@ -152,6 +152,9 @@ func (s *Server) Handler() http.Handler {
 	dash.POST("/stores/gog/ingest", s.handleGogIngest)
 	dash.POST("/stores/epic/connect", s.handleEpicConnect)
 	dash.GET("/stores/epic/library", s.handleEpicLibrary)
+	dash.POST("/stores/ubisoft/connect", s.handleUbisoftConnect)
+	dash.GET("/stores/ubisoft/library", s.handleUbisoftLibrary)
+	dash.POST("/stores/ubisoft/ingest", s.handleUbisoftIngest)
 	dash.POST("/stores/connection/:id/disconnect", s.handleStoreDisconnect)
 
 	// Client API (JSON).

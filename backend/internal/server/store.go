@@ -19,6 +19,7 @@ import (
 	"github.com/cmspeedau/gamedepot/internal/store"
 	"github.com/cmspeedau/gamedepot/internal/store/epic"
 	"github.com/cmspeedau/gamedepot/internal/store/gog"
+	"github.com/cmspeedau/gamedepot/internal/store/ubisoft"
 	"github.com/cmspeedau/gamedepot/internal/tasks"
 )
 
@@ -147,7 +148,141 @@ func (s *Server) handleEpicConnect(c *gin.Context) {
 	c.Redirect(http.StatusFound, "/dashboard/stores?flash=connected")
 }
 
-// providerClient returns a usable provider client for the named provider, or false when
+// handleUbisoftConnect authenticates with email+password and stores the session.
+func (s *Server) handleUbisoftConnect(c *gin.Context) {
+	if !s.storeEnabled(c) {
+		return
+	}
+	email := strings.TrimSpace(c.PostForm("email"))
+	password := c.PostForm("password")
+	if email == "" || password == "" {
+		c.Redirect(http.StatusFound, "/dashboard/stores?flash=email+and+password+required")
+		return
+	}
+	res, err := ubisoft.CreateUbisoftSession(c.Request.Context(), ubisoft.DefaultConfig(), email, password)
+	if err != nil {
+		slog.WarnContext(c.Request.Context(), "ubisoft connect failed", "err", err)
+		c.Redirect(http.StatusFound, "/dashboard/stores?flash="+urlEscape(flashOf(err)))
+		return
+	}
+	if res.TwoFactor != nil {
+		// Stash the 2FA ticket in a short-lived cookie-less flow is out of scope;
+		// surface it as a flash for now.
+		c.Redirect(http.StatusFound, "/dashboard/stores?flash=2fa+required")
+		return
+	}
+	sess := res.Session
+	expires := 24 * time.Hour
+	if err := s.saveProviderConnection(c.Request.Context(), "ubisoft", "Ubisoft account", sess.UserID,
+		sess.Ticket, sess.RememberMeTicket, expires); err != nil {
+		slog.ErrorContext(c.Request.Context(), "ubisoft connection save", "err", err)
+		c.Redirect(http.StatusFound, "/dashboard/stores?flash=save+failed")
+		return
+	}
+	c.Redirect(http.StatusFound, "/dashboard/stores?flash=connected")
+}
+
+// handleUbisoftLibrary renders the entitled games as an HTMX fragment.
+func (s *Server) handleUbisoftLibrary(c *gin.Context) {
+	if !s.storeEnabled(c) {
+		return
+	}
+	client, _, ok := s.ubisoftClient(c.Request.Context())
+	if !ok {
+		s.render(c, "stores_library.html", gin.H{"Error": "No Ubisoft connection. Connect an account first."})
+		return
+	}
+	games, err := client.Library(c.Request.Context())
+	if err != nil {
+		msg := "Library fetch failed"
+		if errors.Is(err, store.ErrReauth) {
+			msg = "Ubisoft rejected the stored credential; connect the account again."
+			s.markStoreConnectionError(c.Request.Context(), "ubisoft")
+		}
+		s.render(c, "stores_library.html", gin.H{"Error": msg + ": " + err.Error()})
+		return
+	}
+	seen := map[string]bool{}
+	items := make([]store.Game, 0, len(games))
+	for _, g := range games {
+		if seen[g.ID] {
+			continue
+		}
+		seen[g.ID] = true
+		items = append(items, g)
+	}
+	s.render(c, "stores_library.html", gin.H{"Games": items})
+}
+
+// handleUbisoftIngest queues one product for acquisition.
+func (s *Server) handleUbisoftIngest(c *gin.Context) {
+	if !s.storeEnabled(c) {
+		return
+	}
+	sess := c.MustGet("session").(*auth.Session)
+	productID := strings.TrimSpace(c.PostForm("product_id"))
+	if productID == "" {
+		c.Redirect(http.StatusFound, "/dashboard/stores?flash=invalid+product+id")
+		return
+	}
+	title := strings.TrimSpace(c.PostForm("title"))
+	platform := strings.TrimSpace(c.PostForm("platform"))
+	if platform == "" {
+		platform = "windows"
+	}
+
+	client, conn, ok := s.ubisoftClient(c.Request.Context())
+	if !ok {
+		c.Redirect(http.StatusFound, "/dashboard/stores?flash=no+ubisoft+connection")
+		return
+	}
+
+	task := s.tasks.StartFor("ingest", "ubisoft:"+productID+":"+platform, sess.UserID,
+		func(ctx context.Context, t *tasks.Task) error {
+			t.AppendLog(fmt.Sprintf("acquiring Ubisoft product %s (%s)", productID, platform))
+			result, err := s.ingestSvc.Run(ctx, client, ingest.Options{
+				Provider:    "ubisoft",
+				ProductID:   productID,
+				Title:       title,
+				Platform:    platform,
+				StagingRoot: s.stagingRoot(),
+				DepotRoot:   s.depotRoot(),
+				PublisherID: pgtype.UUID{Bytes: sess.UserID, Valid: true},
+				Force:       c.PostForm("force") == "1",
+				Progress: func(done, total int64) {
+					if total > 0 {
+						t.SetProgress(float64(done) / float64(total))
+					}
+				},
+			})
+			if err != nil {
+				if errors.Is(err, store.ErrReauth) {
+					s.markStoreConnectionError(ctx, "ubisoft")
+				}
+				return err
+			}
+			if result.Reused {
+				t.AppendLog("already current at build " + result.BuildID)
+				return nil
+			}
+			t.AppendLog(fmt.Sprintf("published %s (%d files, %d bytes)", result.Digest, result.Files, result.Bytes))
+			t.AppendLog("game: /dashboard/games/" + result.GameID.String())
+			_ = conn
+			return nil
+		})
+	c.Redirect(http.StatusFound, "/dashboard/tasks/"+task.ID.String())
+}
+
+// ubisoftClient returns a usable Ubisoft client for the instance's newest active connection.
+func (s *Server) ubisoftClient(ctx context.Context) (*ubisoft.Client, db.StoreConnection, bool) {
+	sess, ok := s.providerSession(ctx, "ubisoft")
+	if !ok {
+		return nil, db.StoreConnection{}, false
+	}
+	client := ubisoft.NewClient(ubisoft.DefaultConfig(), ubisoft.Tokens{Ticket: sess.Access, RememberMeTicket: sess.Refresh})
+	return client, sess.Conn, true
+}
+
 // no active connection exists. It is the single dispatch point the store update check
 // uses so adding a provider means extending one switch.
 func (s *Server) providerClient(ctx context.Context, provider string) (store.Provider, db.StoreConnection, bool) {
@@ -160,6 +295,12 @@ func (s *Server) providerClient(ctx context.Context, provider string) (store.Pro
 		return c, conn, true
 	case "epic":
 		c, conn, ok := s.epicClient(ctx)
+		if !ok {
+			return nil, db.StoreConnection{}, false
+		}
+		return c, conn, true
+	case "ubisoft":
+		c, conn, ok := s.ubisoftClient(ctx)
 		if !ok {
 			return nil, db.StoreConnection{}, false
 		}
