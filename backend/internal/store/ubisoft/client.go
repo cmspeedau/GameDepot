@@ -8,15 +8,24 @@ package ubisoft
 
 import (
 	"bytes"
+	"compress/flate"
+	"compress/gzip"
+	"compress/zlib"
 	"context"
+	"crypto/sha1"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/klauspost/compress/zstd"
 
 	"github.com/google/uuid"
 
@@ -416,16 +425,261 @@ func (c *Client) Library(ctx context.Context) ([]store.Game, error) {
 	return out, nil
 }
 
-// Acquire is not implemented yet: install acquisition rides on the demux socket
-// (socket.go) and is the next piece. Returning a clear error keeps the provider
-// honest rather than half-trying.
-var ErrAcquireNotImplemented = errors.New("ubisoft: install acquisition is not implemented yet (demux socket client landed; acquisition is next)")
-
+// Acquire resolves one Ubisoft product, downloads and decodes its install manifest,
+// and stages the install tree under the caller's staging directory.
 func (c *Client) Acquire(ctx context.Context, productID string, opts store.AcquireOptions) (store.Result, error) {
-	return store.Result{}, ErrAcquireNotImplemented
+	if opts.StagingDir == "" {
+		return store.Result{}, store.Configf("a staging directory is required")
+	}
+	if opts.Language == "" {
+		opts.Language = "en-US"
+	}
+	if opts.Platform == "" {
+		opts.Platform = "windows"
+	}
+
+	acq, err := ConnectUbisoft(ctx, c.tokens.Ticket, false)
+	if err != nil {
+		return store.Result{}, err
+	}
+	defer acq.Destroy()
+
+	games, err := acq.ListOwnedGames(ctx)
+	if err != nil {
+		return store.Result{}, err
+	}
+	var game *UbisoftOwnedGame
+	for i := range games {
+		if games[i].SpaceID == productID || fmt.Sprintf("%d", games[i].ProductID) == productID {
+			game = &games[i]
+			break
+		}
+	}
+	if game == nil {
+		return store.Result{}, fmt.Errorf("ubisoft: product %s is not owned by this account", productID)
+	}
+	if game.LatestManifest == "" {
+		return store.Result{}, fmt.Errorf("ubisoft: product %s publishes no install manifest", productID)
+	}
+
+	creds, err := acq.GetDownloadCredentials(ctx, game.ProductID)
+	if err != nil {
+		return store.Result{}, err
+	}
+	session, err := acq.OpenDownloads(ctx, game.ProductID, creds)
+	if err != nil {
+		return store.Result{}, err
+	}
+
+	// fetch manifest
+	manifestURLs, err := session.MintUrls(ctx, []string{game.LatestManifest})
+	if err != nil {
+		return store.Result{}, err
+	}
+	manifestBytes, err := fetchUbisoftBytes(ctx, c.http, manifestURLs[0])
+	if err != nil {
+		return store.Result{}, err
+	}
+	m, err := ParseManifest(manifestBytes)
+	if err != nil {
+		return store.Result{}, err
+	}
+	plan, err := BuildPlan(m, opts.Language)
+	if err != nil {
+		return store.Result{}, err
+	}
+	if len(plan.Files) == 0 {
+		return store.Result{}, fmt.Errorf("ubisoft: build %s lists no files to install", game.LatestManifest)
+	}
+
+	versionName := strings.ToLower(game.LatestManifest)
+	versionDir := filepath.Join(opts.StagingDir, versionName)
+	if err := os.MkdirAll(versionDir, 0o755); err != nil {
+		return store.Result{}, fmt.Errorf("ubisoft: staging: %w", err)
+	}
+
+	// download unique slices, decompress, verify, cache by content hash
+	cache := map[string][]byte{}
+	downloadSlice := func(s PlanSlice) ([]byte, error) {
+		if b, ok := cache[s.VerifySha1]; ok {
+			return b, nil
+		}
+		paths, err := SliceCdnPathCandidates(s.CDNPath)
+		if err != nil {
+			return nil, err
+		}
+		var lastErr error
+		for _, p := range paths {
+			urls, err := session.MintUrls(ctx, []string{p})
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			raw, err := fetchUbisoftBytes(ctx, c.http, urls[0])
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			body, err := decompressUbisoftSlice(raw)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			sum := sha1.Sum(body)
+			if strings.ToUpper(hex.EncodeToString(sum[:])) != strings.ToUpper(s.VerifySha1) {
+				lastErr = fmt.Errorf("ubisoft: slice %s content hash mismatch", s.CDNPath)
+				continue
+			}
+			cache[s.VerifySha1] = body
+			return body, nil
+		}
+		if lastErr == nil {
+			lastErr = fmt.Errorf("ubisoft: slice %s: no candidate succeeded", s.CDNPath)
+		}
+		return nil, lastErr
+	}
+
+	// assemble files
+	var total int64
+	written := 0
+	for _, pf := range plan.Files {
+		data := make([]byte, pf.Size)
+		for _, sl := range pf.Slices {
+			body, err := downloadSlice(sl)
+			if err != nil {
+				return store.Result{}, fmt.Errorf("ubisoft: %s: %w", pf.Path, err)
+			}
+			if uint64(len(body)) != sl.Size {
+				// allow; copy available
+			}
+			if sl.Offset+uint64(len(body)) > uint64(len(data)) {
+				return store.Result{}, fmt.Errorf("ubisoft: %s: slice exceeds file size", pf.Path)
+			}
+			copy(data[sl.Offset:], body)
+		}
+		target := filepath.Join(versionDir, filepath.FromSlash(pf.Path))
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return store.Result{}, err
+		}
+		tmp, err := os.CreateTemp(filepath.Dir(target), ".ubi-*")
+		if err != nil {
+			return store.Result{}, err
+		}
+		tmpName := tmp.Name()
+		defer func() { tmp.Close(); os.Remove(tmpName) }()
+		if _, err := tmp.Write(data); err != nil {
+			return store.Result{}, err
+		}
+		if err := tmp.Sync(); err != nil {
+			return store.Result{}, err
+		}
+		if err := tmp.Close(); err != nil {
+			return store.Result{}, err
+		}
+		if err := os.Rename(tmpName, target); err != nil {
+			return store.Result{}, err
+		}
+		total += int64(pf.Size)
+		written++
+	}
+
+	launches := make([]store.Launch, 0, len(game.Launches))
+	for _, l := range game.Launches {
+		launches = append(launches, store.Launch{Name: l.Name, Exe: l.Executable, Args: l.Arguments})
+	}
+
+	return store.Result{
+		Dir:         versionDir,
+		Files:       written,
+		TotalSize:   total,
+		BuildID:     game.LatestManifest,
+		VersionName: versionName,
+		Launches:    launches,
+	}, nil
 }
 
-// LatestBuild is not available without acquisition; the demux client provides it.
+func fetchUbisoftBytes(ctx context.Context, hc *http.Client, url string) ([]byte, error) {
+	if hc == nil {
+		hc = http.DefaultClient
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		return nil, fmt.Errorf("ubisoft: fetch %s: %d %s", url, resp.StatusCode, strings.TrimSpace(string(b)))
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, 512<<20))
+}
+
+func decompressUbisoftSlice(body []byte) ([]byte, error) {
+	if len(body) >= 4 {
+		magic := uint32(body[0]) | (uint32(body[1]) << 8) | (uint32(body[2]) << 16) | (uint32(body[3]) << 24)
+		if magic == 0xfd2fb528 {
+			dec, err := zstd.NewReader(bytes.NewReader(body))
+			if err != nil {
+				return nil, err
+			}
+			defer dec.Close()
+			return io.ReadAll(dec)
+		}
+	}
+	if len(body) >= 2 && body[0] == 0x28 && body[1] == 0xb5 {
+		dec, err := zstd.NewReader(bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		defer dec.Close()
+		return io.ReadAll(dec)
+	}
+	if len(body) >= 2 && body[0] == 0x1f && body[1] == 0x8b {
+		gr, err := gzip.NewReader(bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		defer gr.Close()
+		return io.ReadAll(gr)
+	}
+	if len(body) >= 2 && body[0] == 0x78 {
+		zr, err := zlib.NewReader(bytes.NewReader(body))
+		if err == nil {
+			defer zr.Close()
+			if b, err := io.ReadAll(zr); err == nil {
+				return b, nil
+			}
+		}
+		// try raw deflate
+		fr := flate.NewReader(bytes.NewReader(body))
+		defer fr.Close()
+		if b, err := io.ReadAll(fr); err == nil {
+			return b, nil
+		}
+	}
+	return body, nil
+}
+
+// LatestBuild reports the newest install manifest SHA for a product, by running the
+// ownership half of the acquisition flow.
 func (c *Client) LatestBuild(ctx context.Context, productID, platform string) (store.BuildInfo, error) {
-	return store.BuildInfo{}, ErrAcquireNotImplemented
+	acq, err := ConnectUbisoft(ctx, c.tokens.Ticket, false)
+	if err != nil {
+		return store.BuildInfo{}, err
+	}
+	defer acq.Destroy()
+	games, err := acq.ListOwnedGames(ctx)
+	if err != nil {
+		return store.BuildInfo{}, err
+	}
+	for _, g := range games {
+		if g.SpaceID == productID || fmt.Sprintf("%d", g.ProductID) == productID {
+			return store.BuildInfo{ID: g.LatestManifest, VersionName: g.LatestManifest}, nil
+		}
+	}
+	return store.BuildInfo{}, fmt.Errorf("ubisoft: product %s not owned", productID)
 }
