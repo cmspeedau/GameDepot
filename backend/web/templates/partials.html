@@ -8,11 +8,13 @@
       <div class="hidden md:flex items-center gap-1 text-sm">
         <a data-nav href="/dashboard" class="nav-tab">Dashboard</a>
         <a data-nav href="/dashboard/games" class="nav-tab">Games</a>
+        {{if .IsAdmin}}
         <a data-nav href="/dashboard/releases/new" class="nav-tab">Publish</a>
         <a data-nav href="/dashboard/libraries" class="nav-tab">Libraries</a>
         {{if .StoresEnabled}}<a data-nav href="/dashboard/stores" class="nav-tab">Stores</a>{{end}}
         <a data-nav href="/dashboard/users" class="nav-tab">Users</a>
         <a data-nav href="/dashboard/clients" class="nav-tab">Clients</a>
+        {{end}}
       </div>
       <div class="flex items-center gap-3">
         <div class="relative" id="user-menu">
@@ -22,7 +24,11 @@
           </button>
           <div id="user-dropdown" class="hidden absolute right-0 mt-2 w-48 rounded-lg border border-zinc-800 bg-zinc-900/95 backdrop-blur shadow-xl shadow-black/40 py-1 z-50">
             <a href="/dashboard" class="block px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors">Dashboard</a>
+            {{if .IsAdmin}}
             <a href="/dashboard/users" class="block px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors">Users</a>
+            {{if .StoresEnabled}}<a href="/dashboard/stores" class="block px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors">Stores</a>{{end}}
+            <a href="/dashboard/clients" class="block px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors">Clients</a>
+            {{end}}
             <div class="my-1 border-t border-zinc-800"></div>
             <form method="post" action="/signout"><button type="submit" class="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors">Sign out</button></form>
           </div>

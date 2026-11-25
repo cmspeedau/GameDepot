@@ -215,7 +215,16 @@ func (s *Server) render(c *gin.Context, name string, data gin.H) {
 	if sess, ok := c.Get("session"); ok {
 		if ss, ok := sess.(*auth.Session); ok {
 			data["CSRF"] = base64.RawURLEncoding.EncodeToString(ss.CSRF)
+			if _, ok := data["Username"]; !ok {
+				if user, err := s.db.GetUserByID(c.Request.Context(), pgtype.UUID{Bytes: ss.UserID, Valid: true}); err == nil {
+					data["Username"] = user.Username
+					data["IsAdmin"] = user.Admin
+				}
+			}
 		}
+	}
+	if _, ok := data["StoresEnabled"]; !ok {
+		data["StoresEnabled"] = s.storesReady()
 	}
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	if err := s.templates.ExecuteTemplate(c.Writer, name, data); err != nil {

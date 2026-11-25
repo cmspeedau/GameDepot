@@ -9,14 +9,15 @@
 </head>
 <body class="min-h-screen bg-zinc-950 text-zinc-100">
   {{template "nav" .}}
-  <main class="mx-auto max-w-3xl px-6 py-8">
-    <h1 class="text-xl font-semibold mb-4">Dashboard</h1>
+  <main class="mx-auto max-w-5xl px-6 py-8">
+    <h1 class="text-2xl font-semibold mb-6">Dashboard</h1>
     {{template "flash" .}}
-    <ul class="grid gap-3 sm:grid-cols-2 text-sm">
+    <ul class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-sm">
       <li class="group rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 transition-all hover:border-zinc-700 hover:bg-zinc-900/70 hover:shadow-lg hover:shadow-black/20">
         <a href="/dashboard/games" class="font-medium text-blue-400 group-hover:text-blue-300 transition-colors">Games</a>
         <p class="text-zinc-400 mt-1">Catalog, versions and launch entries.</p>
       </li>
+      {{if .IsAdmin}}
       <li class="group rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 transition-all hover:border-zinc-700 hover:bg-zinc-900/70 hover:shadow-lg hover:shadow-black/20">
         <a href="/dashboard/releases/new" class="font-medium text-blue-400 group-hover:text-blue-300 transition-colors">Publish a release</a>
         <p class="text-zinc-400 mt-1">Build a version from a directory on disk.</p>
@@ -26,20 +27,23 @@
         <p class="text-zinc-400 mt-1">Who can see which games.</p>
       </li>
       <li class="group rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 transition-all hover:border-zinc-700 hover:bg-zinc-900/70 hover:shadow-lg hover:shadow-black/20">
-        <a href="/dashboard/clients" class="font-medium text-blue-400 group-hover:text-blue-300 transition-colors">Clients</a>
-        <p class="text-zinc-400 mt-1">Approve pairing codes from desktop installs.</p>
-      </li>
-      <li class="group rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 transition-all hover:border-zinc-700 hover:bg-zinc-900/70 hover:shadow-lg hover:shadow-black/20">
         <a href="/dashboard/users" class="font-medium text-blue-400 group-hover:text-blue-300 transition-colors">Users</a>
         <p class="text-zinc-400 mt-1">Accounts, invitations and sessions.</p>
+      </li>
+      <li class="group rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 transition-all hover:border-zinc-700 hover:bg-zinc-900/70 hover:shadow-lg hover:shadow-black/20">
+        <a href="/dashboard/clients" class="font-medium text-blue-400 group-hover:text-blue-300 transition-colors">Clients</a>
+        <p class="text-zinc-400 mt-1">Approve pairing codes from desktop installs.</p>
       </li>
       {{if .StoresEnabled}}
       <li class="group rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 transition-all hover:border-zinc-700 hover:bg-zinc-900/70 hover:shadow-lg hover:shadow-black/20">
         <a href="/dashboard/stores" class="font-medium text-blue-400 group-hover:text-blue-300 transition-colors">Store accounts</a>
-        <p class="text-zinc-400 mt-1">Connect GOG and ingest entitled games.</p>
+        <p class="text-zinc-400 mt-1">Connect game stores and ingest entitled games.</p>
       </li>
+      {{end}}
       {{end}}
     </ul>
   </main>
 </body>
 </html>
+EOF
+echo written
