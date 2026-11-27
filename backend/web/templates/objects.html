@@ -15,7 +15,7 @@
     <form method="post" action="/dashboard/objects" enctype="multipart/form-data" class="flex gap-2 mb-6">
       <input type="hidden" name="_csrf" value="{{.CSRF}}">
       <input type="file" name="file" class="text-sm">
-      <button class="rounded bg-blue-600 px-4 py-2 text-sm font-medium">Upload</button>
+      <button class="rounded bg-lime-600 px-4 py-2 text-sm font-medium">Upload</button>
     </form>
     <p class="text-zinc-400 text-sm">Uploaded objects are content-addressed by SHA-256 and deduplicated.</p>
   </main>

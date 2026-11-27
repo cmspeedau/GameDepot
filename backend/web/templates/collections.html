@@ -15,7 +15,7 @@
     <form method="post" action="/dashboard/collections" class="flex gap-2 mb-6">
       <input type="hidden" name="_csrf" value="{{.CSRF}}">
       <input name="name" placeholder="collection name" class="rounded border border-zinc-700 bg-zinc-900 px-3 py-2">
-      <button class="rounded bg-blue-600 px-4 py-2 text-sm font-medium">Create</button>
+      <button class="rounded bg-lime-600 px-4 py-2 text-sm font-medium">Create</button>
     </form>
     <ul class="text-sm text-zinc-300">
       {{range .Collections}}<li class="py-1">{{.Name}}</li>{{end}}

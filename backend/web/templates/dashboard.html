@@ -14,29 +14,29 @@
     {{template "flash" .}}
     <ul class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-sm">
       <li class="group rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 transition-all hover:border-zinc-700 hover:bg-zinc-900/70 hover:shadow-lg hover:shadow-black/20">
-        <a href="/dashboard/games" class="font-medium text-blue-400 group-hover:text-blue-300 transition-colors">Games</a>
+        <a href="/dashboard/games" class="font-medium text-lime-400 group-hover:text-lime-300 transition-colors">Games</a>
         <p class="text-zinc-400 mt-1">Catalog, versions and launch entries.</p>
       </li>
       {{if .IsAdmin}}
       <li class="group rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 transition-all hover:border-zinc-700 hover:bg-zinc-900/70 hover:shadow-lg hover:shadow-black/20">
-        <a href="/dashboard/releases/new" class="font-medium text-blue-400 group-hover:text-blue-300 transition-colors">Publish a release</a>
+        <a href="/dashboard/releases/new" class="font-medium text-lime-400 group-hover:text-lime-300 transition-colors">Publish a release</a>
         <p class="text-zinc-400 mt-1">Build a version from a directory on disk.</p>
       </li>
       <li class="group rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 transition-all hover:border-zinc-700 hover:bg-zinc-900/70 hover:shadow-lg hover:shadow-black/20">
-        <a href="/dashboard/libraries" class="font-medium text-blue-400 group-hover:text-blue-300 transition-colors">Libraries</a>
+        <a href="/dashboard/libraries" class="font-medium text-lime-400 group-hover:text-lime-300 transition-colors">Libraries</a>
         <p class="text-zinc-400 mt-1">Who can see which games.</p>
       </li>
       <li class="group rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 transition-all hover:border-zinc-700 hover:bg-zinc-900/70 hover:shadow-lg hover:shadow-black/20">
-        <a href="/dashboard/users" class="font-medium text-blue-400 group-hover:text-blue-300 transition-colors">Users</a>
+        <a href="/dashboard/users" class="font-medium text-lime-400 group-hover:text-lime-300 transition-colors">Users</a>
         <p class="text-zinc-400 mt-1">Accounts, invitations and sessions.</p>
       </li>
       <li class="group rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 transition-all hover:border-zinc-700 hover:bg-zinc-900/70 hover:shadow-lg hover:shadow-black/20">
-        <a href="/dashboard/clients" class="font-medium text-blue-400 group-hover:text-blue-300 transition-colors">Clients</a>
+        <a href="/dashboard/clients" class="font-medium text-lime-400 group-hover:text-lime-300 transition-colors">Clients</a>
         <p class="text-zinc-400 mt-1">Approve pairing codes from desktop installs.</p>
       </li>
       {{if .StoresEnabled}}
       <li class="group rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 transition-all hover:border-zinc-700 hover:bg-zinc-900/70 hover:shadow-lg hover:shadow-black/20">
-        <a href="/dashboard/stores" class="font-medium text-blue-400 group-hover:text-blue-300 transition-colors">Store accounts</a>
+        <a href="/dashboard/stores" class="font-medium text-lime-400 group-hover:text-lime-300 transition-colors">Store accounts</a>
         <p class="text-zinc-400 mt-1">Connect game stores and ingest entitled games.</p>
       </li>
       {{end}}

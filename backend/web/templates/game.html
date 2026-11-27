@@ -34,7 +34,7 @@
         <span class="text-sm">Cover object id</span>
         <input name="cover_object_id" value="{{if .Game.CoverObjectID.Valid}}{{uuid .Game.CoverObjectID}}{{end}}" class="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2">
       </label>
-      <button class="rounded bg-blue-600 px-4 py-2 font-medium">Save</button>
+      <button class="rounded bg-lime-600 px-4 py-2 font-medium">Save</button>
     </form>
     <h2 class="text-lg mb-2">Versions</h2>
     <ul class="text-sm text-zinc-400 mb-4">
@@ -44,7 +44,7 @@
       <input type="hidden" name="_csrf" value="{{.CSRF}}">
       <input name="name" placeholder="version name" class="rounded border border-zinc-700 bg-zinc-900 px-3 py-2">
       <input name="platform" placeholder="platform" class="rounded border border-zinc-700 bg-zinc-900 px-3 py-2">
-      <button class="rounded bg-blue-600 px-4 py-2 text-sm font-medium">Add version</button>
+      <button class="rounded bg-lime-600 px-4 py-2 text-sm font-medium">Add version</button>
     </form>
     <h2 class="text-lg mt-8 mb-2">Launch options</h2>
     <p class="text-sm text-zinc-400 mb-3">Executables are paths inside the installed files; arguments are space-separated and passed to execve directly, never through a shell.</p>
@@ -74,7 +74,7 @@
           <input name="executable" placeholder="Game.sh" class="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm flex-1">
           <input name="arguments" placeholder="--args" class="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm">
           <input name="working_dir" placeholder="work dir" class="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm">
-          <button class="rounded bg-blue-600 px-4 py-2 text-sm font-medium">Add launch</button>
+          <button class="rounded bg-lime-600 px-4 py-2 text-sm font-medium">Add launch</button>
         </form>
       </div>
     {{end}}

@@ -12,7 +12,7 @@
   <main class="mx-auto max-w-3xl px-6 py-8">
     <div class="flex items-center justify-between mb-4">
       <h1 class="text-xl font-semibold">Games</h1>
-      <a href="/dashboard/games/new" class="rounded bg-blue-600 px-4 py-2 text-sm font-medium">New game</a>
+      <a href="/dashboard/games/new" class="rounded bg-lime-600 px-4 py-2 text-sm font-medium">New game</a>
     </div>
     {{template "flash" .}}
     <table class="w-full text-sm">
@@ -20,7 +20,7 @@
       <tbody>
       {{range .Games}}
         <tr class="border-t border-zinc-800">
-          <td class="py-2"><a href="/dashboard/games/{{uuid .ID}}" class="text-blue-400 hover:underline">{{.Name}}</a></td>
+          <td class="py-2"><a href="/dashboard/games/{{uuid .ID}}" class="text-lime-400 hover:underline">{{.Name}}</a></td>
           <td>{{.Slug}}</td>
           <td></td>
           <td>

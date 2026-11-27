@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GameDepot mock: Steam-style library and admin panel</title>
+  <style>
+    :root {
+      --bg: #272a2b;
+      --panel: #2f3335;
+      --panel-2: #363a3c;
+      --card: #2f3335;
+      --card-hover: #3a3f42;
+      --border: #1a1d1e;
+      --text: #d6dee2;
+      --text-dim: #8a9399;
+      --text-strong: #ffffff;
+      --accent: #cff116;
+      --accent-dim: #96a921;
+      --play: #cff116;
+      --play-hover: #96a921;
+      --play-text: #1a1d1e;
+      --danger: #e07070;
+      --radius: 3px;
+      --font: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font-family: var(--font);
+      background: radial-gradient(ellipse at top, #2f3335 0%, #272a2b 70%);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.4;
+      overflow: hidden;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    button { font-family: inherit; cursor: pointer; }
+    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+    .app {
+      display: grid;
+      grid-template-rows: 48px 1fr;
+      height: 100vh;
+    }
+    /* Top bar */
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 0 16px;
+      background: linear-gradient(180deg, #2f3335 0%, #272a2b 100%);
+      border-bottom: 1px solid var(--border);
+    }
+    .logo {
+      font-weight: 700;
+      font-size: 18px;
+      color: var(--text-strong);
+      letter-spacing: 0.5px;
+    }
+    .logo span { color: var(--accent); }
+    .topnav { display: flex; gap: 4px; }
+    .topnav button {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      padding: 6px 10px;
+      border-radius: var(--radius);
+      font-size: 13px;
+    }
+    .topnav button[data-view="admin"] {
+      background: rgba(207,241,22,0.12);
+      border: 1px solid var(--accent-dim);
+      color: var(--accent);
+    }
+    .topnav button:hover { color: var(--text-strong); background: rgba(255,255,255,0.06); }
+    .topnav button.active { color: var(--text-strong); }
+    .search {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      background: #1a1d1e;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0 10px;
+      width: 260px;
+    }
+    .search input {
+      background: none;
+      border: none;
+      color: var(--text);
+      padding: 6px 0;
+      width: 100%;
+      outline: none;
+    }
+    .user-menu { position: relative; }
+    .user-trigger {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-size: 13px;
+      padding: 4px 6px;
+      border-radius: var(--radius);
+    }
+    .user-trigger:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+    .caret { font-size: 10px; opacity: 0.7; }
+    .dropdown {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      min-width: 180px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 4px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      z-index: 20;
+    }
+    .dropdown[hidden] { display: none; }
+    .dropdown-item {
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: none;
+      color: var(--text);
+      padding: 8px 10px;
+      border-radius: var(--radius);
+      font-size: 13px;
+    }
+    .dropdown-item:hover { background: rgba(255,255,255,0.08); }
+    .dropdown-item-danger { color: var(--danger); }
+    .dropdown-divider { height: 1px; background: var(--border); margin: 4px 0; }
+    .avatar {
+      width: 28px; height: 28px;
+      border-radius: 2px;
+      background: #5c6622;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--text-strong);
+      font-weight: 600;
+      font-size: 12px;
+    }
+    /* Library view */
+    .view { height: 100%; min-height: 0; }
+    .view[hidden] { display: none; }
+    .body {
+      display: grid;
+      grid-template-columns: 1fr;
+      min-height: 0;
+      height: 100%;
+    }
+    .sidebar {
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      padding: 12px 8px;
+      overflow-y: auto;
+    }
+    .sidebar h3 {
+      font-size: 11px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin: 12px 8px 4px;
+      letter-spacing: 0.6px;
+    }
+    .sidebar ul { list-style: none; margin: 0; padding: 0; }
+    .sidebar li button {
+      width: 100%;
+      text-align: left;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+    .sidebar li button:hover { background: var(--card-hover); border-color: var(--accent-dim); }
+    .sidebar li button.active { background: rgba(207,241,22,0.18); border-color: var(--accent); color: var(--text-strong); }
+    .sidebar .count { color: var(--text-dim); font-size: 12px; }
+    .main {
+      overflow-y: auto;
+      padding: 16px;
+    }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .toolbar h2 { margin: 0; font-size: 18px; color: var(--text-strong); font-weight: 600; }
+    .toolbar .spacer { flex: 1; }
+    .view-toggle button {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+    .view-toggle button.active { color: var(--text-strong); background: var(--card-hover); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 12px;
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: 1.6fr 1fr;
+      gap: 16px;
+      background: linear-gradient(135deg, #2f3335 0%, #272a2b 60%, #1f2324 100%);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px;
+      margin-bottom: 16px;
+      align-items: center;
+    }
+    .hero .cover {
+      aspect-ratio: 16 / 9;
+      border-radius: 4px;
+      font-size: 22px;
+      background: var(--card-hover);
+    }
+    .hero .info h2 {
+      margin: 0 0 4px;
+      color: var(--text-strong);
+      font-size: 22px;
+      font-weight: 700;
+    }
+    .hero .info .meta { color: var(--text-dim); font-size: 13px; margin-bottom: 12px; }
+    .hero .info .actions { display: flex; gap: 8px; }
+    .hero .btn-play { flex: 0 0 auto; padding: 8px 20px; font-size: 13px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+      cursor: pointer;
+    }
+    .card:hover { background: var(--card-hover); transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.4); border-color: var(--accent-dim); }
+    .card.selected { outline: 2px solid var(--accent); }
+    .cover svg, .cover-large svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .cover {
+      aspect-ratio: 460 / 215;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 16px;
+      color: rgba(255,255,255,0.85);
+      position: relative;
+    }
+    .cover .badge {
+      position: absolute;
+      top: 6px; left: 6px;
+      background: rgba(0,0,0,0.6);
+      color: var(--text-dim);
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 2px;
+    }
+    .card-body { padding: 8px 10px; }
+    .card-title { font-size: 13px; color: var(--text-strong); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .card-meta { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+    .card-actions { display: flex; gap: 6px; margin-top: 8px; }
+    .btn-play {
+      background: var(--play);
+      color: var(--play-text);
+      border: none;
+      padding: 4px 12px;
+      border-radius: var(--radius);
+      font-size: 12px;
+      font-weight: 600;
+      flex: 1;
+      box-shadow: 0 0 0 1px rgba(207,241,22,0.25), 0 2px 8px rgba(207,241,22,0.15);
+    }
+    .btn-play:hover { background: var(--play-hover); color: var(--text-strong); }
+    .btn-ghost {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 4px 8px;
+      border-radius: var(--radius);
+      font-size: 12px;
+    }
+    .detail {
+      background: var(--panel);
+      border-left: 1px solid var(--border);
+      padding: 16px;
+      overflow-y: auto;
+    }
+    .detail h3 { margin: 0 0 8px; color: var(--text-strong); font-size: 16px; }
+    .detail .cover-large {
+      aspect-ratio: 460 / 215;
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 20px;
+      color: rgba(255,255,255,0.9);
+      margin-bottom: 12px;
+    }
+    .detail .row { display: flex; gap: 8px; margin: 6px 0; font-size: 13px; }
+    .detail .row .k { color: var(--text-dim); min-width: 90px; }
+    .detail .row .v { color: var(--text); }
+    .desc { color: var(--text); font-size: 13px; line-height: 1.5; margin: 8px 0 12px; }
+    .gd-top { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+    .gd-details {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 12px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+    }
+    .gd-details .field { display: flex; flex-direction: column; gap: 2px; }
+    .gd-details .field .k {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--text-dim);
+    }
+    .gd-details .field .v {
+      font-size: 13px;
+      color: var(--text-strong);
+      font-weight: 500;
+    }
+    .gd-details .field .v.badge { font-weight: 600; }
+    .detail .actions { display: flex; gap: 8px; margin-top: 12px; }
+    .empty {
+      text-align: center;
+      color: var(--text-dim);
+      padding: 40px 16px;
+    }
+    /* Admin view */
+    .admin {
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      height: 100%;
+      min-height: 0;
+    }
+    .admin-nav {
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      padding: 12px 8px;
+      overflow-y: auto;
+    }
+    .admin-nav h3 {
+      font-size: 11px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin: 12px 8px 4px;
+      letter-spacing: 0.6px;
+    }
+    .admin-nav ul { list-style: none; margin: 0; padding: 0; }
+    .admin-nav li button {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 6px;
+      border-radius: var(--radius);
+      font-size: 11px;
+      margin-bottom: 4px;
+      transition: background 120ms ease, border-color 120ms ease;
+    }
+    .admin-nav .icon { width: 22px; height: 22px; line-height: 1; color: var(--accent); }
+    .admin-nav .icon svg { width: 100%; height: 100%; display: block; }
+    .admin-nav .label { font-size: 11px; }
+    .admin-nav li button:hover { background: var(--card-hover); border-color: var(--accent-dim); }
+    .admin-nav li button.active { background: rgba(207,241,22,0.18); border-color: var(--accent); color: var(--text-strong); }
+    .admin-main {
+      overflow-y: auto;
+      padding: 20px;
+    }
+    .admin-main h2 { margin: 0 0 4px; color: var(--text-strong); font-size: 20px; }
+    .admin-main .subtitle { color: var(--text-dim); font-size: 13px; margin-bottom: 16px; }
+    .admin-toolbar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+      align-items: center;
+    }
+    .admin-toolbar .spacer { flex: 1; }
+    .btn-primary {
+      background: var(--accent);
+      color: var(--play-text);
+      border: none;
+      padding: 6px 12px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .btn-primary:hover { background: var(--accent-dim); color: var(--text-strong); }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+    table.admin-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    table.admin-table th, table.admin-table td {
+      padding: 8px 10px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    table.admin-table th {
+      background: var(--panel-2);
+      color: var(--text-dim);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    table.admin-table tr:hover td { background: rgba(255,255,255,0.03); }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 2px;
+      font-size: 11px;
+      background: var(--panel-2);
+      color: var(--text-dim);
+    }
+    .badge.ok { background: rgba(207,241,22,0.15); color: var(--play); }
+    .badge.warn { background: rgba(224,112,112,0.15); color: var(--danger); }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--accent);
+      font-size: 13px;
+      margin-bottom: 12px;
+      background: none;
+      border: none;
+      padding: 0;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      max-width: 600px;
+    }
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field label { font-size: 12px; color: var(--text-dim); }
+    .field input, .field select {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 8px;
+      border-radius: var(--radius);
+      font-size: 13px;
+    }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      padding: 20px;
+    }
+    .modal-backdrop[hidden] { display: none; }
+    .modal {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      width: 100%;
+      max-width: 640px;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .modal-header h2 { margin: 0; color: var(--text-strong); font-size: 18px; }
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-size: 18px;
+      padding: 4px 8px;
+      border-radius: var(--radius);
+    }
+    .modal-close:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+    .modal-body { padding: 16px; overflow-y: auto; }
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+    }
+    .store-tabs {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .store-tab {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 6px 12px;
+      border-radius: var(--radius);
+      font-size: 13px;
+    }
+    .store-tab:hover { color: var(--text); border-color: var(--accent-dim); }
+    .store-tab.active { background: rgba(207,241,22,0.15); border-color: var(--accent); color: var(--text-strong); }
+    .login-box {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .login-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .login-user { color: var(--text-dim); font-size: 13px; }
+    .games-box {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+    }
+    .games-box-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      color: var(--text-strong);
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .collections-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .coll-btn {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 6px 12px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .coll-btn:hover { color: var(--text); border-color: var(--accent-dim); }
+    .coll-btn.active { background: rgba(207,241,22,0.15); border-color: var(--accent); color: var(--text-strong); }
+    .coll-sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+    .mock-note {
+      position: fixed;
+      bottom: 8px;
+      right: 8px;
+      background: rgba(0,0,0,0.7);
+      color: var(--text-dim);
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      z-index: 30;
+    }
+    @media (max-width: 640px) {
+      .body { grid-template-columns: 1fr; }
+      .sidebar, .detail { display: none; }
+      .grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+      .admin { grid-template-columns: 1fr; }
+      .admin-nav { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar" role="banner">
+      <div class="logo">Game<span>Depot</span></div>
+      <nav class="topnav" aria-label="Primary">
+        <button class="active" data-view="library">Library</button>
+        <button data-view="admin">Admin</button>
+      </nav>
+      <div class="search">
+        <input type="search" placeholder="Search library" aria-label="Search library" id="search" />
+      </div>
+      <div class="user-menu" id="user-menu">
+        <button class="user-trigger" id="user-trigger" aria-haspopup="menu" aria-expanded="false" aria-controls="user-dropdown">
+          <div class="avatar" aria-hidden="true">GD</div>
+          <span>guest</span>
+          <span class="caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="dropdown" id="user-dropdown" role="menu" hidden>
+          <button class="dropdown-item" role="menuitem" data-action="admin">Admin settings</button>
+          <button class="dropdown-item" role="menuitem" data-action="user">User settings</button>
+          <div class="dropdown-divider" role="separator"></div>
+          <button class="dropdown-item dropdown-item-danger" role="menuitem" data-action="signout">Sign out</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Library view -->
+    <div class="view" id="view-library">
+      <div class="body">
+        <main class="main" id="main">
+          <div class="collections-bar" id="collections-bar">
+            <button class="coll-btn active" data-filter="all">All games <span class="count" id="c-all">0</span></button>
+            <button class="coll-btn" data-filter="installed">Installed <span class="count" id="c-installed">0</span></button>
+            <button class="coll-btn" data-filter="favorites">Favorites <span class="count" id="c-favorites">0</span></button>
+            <span class="coll-sep"></span>
+            <span id="tag-bar"></span>
+          </div>
+          <div class="toolbar">
+            <h2 id="view-title">Library</h2>
+            <div class="spacer"></div>
+            <div class="view-toggle" role="group" aria-label="View mode">
+              <button class="active" data-mode="grid">Grid</button>
+              <button data-mode="list">List</button>
+            </div>
+          </div>
+          <div class="grid" id="grid" role="list"></div>
+          <div class="empty" id="empty" hidden>No games match this filter.</div>
+        </main>
+        <!-- game detail modal -->
+        <div class="modal-backdrop" id="game-detail-modal" hidden role="dialog" aria-modal="true" aria-labelledby="gd-title">
+          <div class="modal">
+            <div class="modal-header">
+              <h2 id="gd-title">Game details</h2>
+              <button class="modal-close" id="gd-close" aria-label="Close">✕</button>
+            </div>
+            <div class="modal-body" id="game-detail-body">
+              <p class="empty">Select a game to see details.</p>
+            </div>
+            <div class="modal-footer">
+              <button class="btn-ghost" id="gd-cancel">Close</button>
+              <button class="btn-play">Play</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- User settings modal -->
+    <div class="modal-backdrop" id="user-settings-modal" hidden role="dialog" aria-modal="true" aria-labelledby="us-title">
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="us-title">User settings</h2>
+          <button class="modal-close" id="us-close" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          <p class="subtitle">Edit your profile and preferences.</p>
+          <div class="form-grid">
+            <div class="field"><label>Display name</label><input value="guest" /></div>
+            <div class="field"><label>Username</label><input value="guest" disabled /></div>
+            <div class="field"><label>New password</label><input type="password" placeholder="Leave blank to keep" /></div>
+            <div class="field"><label>Theme</label><select><option>Dark</option><option>Light</option></select></div>
+          </div>
+          <h3 style="margin:16px 0 6px;color:var(--text-strong);font-size:14px;">Paired clients</h3>
+          <p class="subtitle" style="margin-bottom:8px;">Clients linked to this account and server.</p>
+          <div class="table-wrap" style="margin-bottom:12px;">
+            <table class="admin-table">
+              <thead><tr><th>Name</th><th>Platform</th><th>Paired</th><th>Actions</th></tr></thead>
+              <tbody>
+                <tr><td>desktop-guest</td><td>linux</td><td>2026-11-20</td><td><button class="btn-ghost">Unlink</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <h3 style="margin:16px 0 6px;color:var(--text-strong);font-size:14px;">Active sessions</h3>
+          <p class="subtitle" style="margin-bottom:8px;">Web sessions for this account.</p>
+          <div class="table-wrap" style="margin-bottom:12px;">
+            <table class="admin-table">
+              <thead><tr><th>IP</th><th>Created</th><th>Expires</th><th>Actions</th></tr></thead>
+              <tbody>
+                <tr><td>127.0.0.1</td><td>today</td><td>7 days</td><td><button class="btn-ghost">Revoke</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <button class="btn-primary" style="margin-bottom:12px;">Pair new client</button>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-ghost" id="us-cancel">Cancel</button>
+          <button class="btn-primary">Save changes</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Admin view -->
+    <div class="view" id="view-admin" hidden>
+      <div class="admin">
+        <nav class="admin-nav" aria-label="Admin sections">
+          <h3>Manage</h3>
+          <ul>
+            <li><button class="active" data-tab="users"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg></span><span class="label">User settings</span></button></li>
+            <li><button data-tab="store"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="10" width="18" height="9" rx="2"/><path d="M7 10V7a5 5 0 0 1 10 0v3"/><circle cx="9" cy="14.5" r="1.2" fill="currentColor"/><circle cx="15" cy="14.5" r="1.2" fill="currentColor"/></svg></span><span class="label">Game store</span></button></li>
+            <li><button data-tab="saves"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><rect x="8" y="3" width="8" height="6"/><circle cx="12" cy="15" r="2.5"/></svg></span><span class="label">Game saves</span></button></li>
+            <li><button data-tab="libraries"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span><span class="label">Libraries</span></button></li>
+            <li><button data-tab="companies"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18"/><path d="M8 7h3M8 11h3M8 15h3M14 7h2M14 11h2M14 15h2"/></svg></span><span class="label">Companies</span></button></li>
+            <li><button data-tab="tags"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12l-8 8-9-9V3h8z"/><circle cx="7.5" cy="7.5" r="1.2" fill="currentColor"/></svg></span><span class="label">Tags</span></button></li>
+            <li><button data-tab="discovery"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span><span class="label">Discovery</span></button></li>
+
+
+            <li><button data-tab="settings"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></span><span class="label">Settings</span></button></li>
+          </ul>
+        </nav>
+        <div class="admin-main" id="admin-main"></div>
+      </div>
+    </div>
+  </div>
+  <div class="mock-note">Mock data only. Not connected to a server.</div>
+
+  <script>
+    // Mock library data.
+    const games = [
+      { id: "g1", name: "Aurora Drift", tag: "Racing", color: "#2a5a7a", installed: true, favorite: true, lastPlayed: "2 days ago", size: "12.4 GiB", version: "v3", hoursPlayed: 42.5, description: "A high-speed racer through aurora-lit circuits. Drift, boost, and climb the global leaderboards." },
+      { id: "g2", name: "Bastion Keep", tag: "Strategy", color: "#5a3a2a", installed: true, favorite: false, lastPlayed: "1 week ago", size: "8.1 GiB", version: "v1", hoursPlayed: 18.2, description: "Defend your fortress against waves of invaders. Plan, build, and hold the line." },
+      { id: "g3", name: "Cinderwake", tag: "Action", color: "#7a2a2a", installed: false, favorite: true, lastPlayed: "never", size: "22.0 GiB", version: "v2", hoursPlayed: 0, description: "A warrior rises from the ashes. Fast melee combat in a world consumed by fire." },
+      { id: "g4", name: "Duskfall", tag: "RPG", color: "#3a2a5a", installed: true, favorite: false, lastPlayed: "today", size: "18.7 GiB", version: "v4", hoursPlayed: 67.3, description: "An epic journey through twilight realms. Quest, craft, and shape your destiny." },
+      { id: "g5", name: "Emberlight", tag: "Puzzle", color: "#5a5a2a", installed: false, favorite: false, lastPlayed: "never", size: "2.3 GiB", version: "v1", hoursPlayed: 0, description: "Illuminate the dark. Solve light-based puzzles across 80 handcrafted levels." },
+      { id: "g6", name: "Frostline", tag: "Survival", color: "#2a5a5a", installed: true, favorite: true, lastPlayed: "3 days ago", size: "31.2 GiB", version: "v2", hoursPlayed: 25.8, description: "Survive the frozen frontier. Hunt, build shelter, and outlast the winter." },
+      { id: "g7", name: "Galeforce", tag: "Action", color: "#2a3a6a", installed: true, favorite: false, lastPlayed: "5 days ago", size: "14.9 GiB", version: "v3", hoursPlayed: 12.1, description: "Take to the skies. Aerial dogfights and daring missions await." },
+      { id: "g8", name: "Hollow Reach", tag: "Horror", color: "#4a2a4a", installed: false, favorite: false, lastPlayed: "never", size: "9.5 GiB", version: "v1", hoursPlayed: 0, description: "Something lurks in the dark. Explore abandoned halls and survive the night." },
+    ];
+
+    const state = { filter: "all", search: "", selected: null, mode: "grid" };
+
+    function initials(name) {
+      return name.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
+    }
+
+    // Inline SVG cover art per game (offline, no external assets).
+    function coverArt(g) {
+      const palettes = {
+        g1: ["#0a1a2e", "#1a3a5e", "#66c0f4", "#cff116"],
+        g2: ["#1a1208", "#3a2810", "#b8860b", "#ffe4a0"],
+        g3: ["#1a0808", "#3a1010", "#ff4500", "#ffcc00"],
+        g4: ["#12081a", "#2a103a", "#9370db", "#e6d5ff"],
+        g5: ["#1a1a08", "#3a3a10", "#daa520", "#fffacd"],
+        g6: ["#081a1a", "#103a3a", "#20b2aa", "#e0ffff"],
+        g7: ["#08081a", "#10103a", "#4169e1", "#b0c4de"],
+        g8: ["#1a081a", "#3a103a", "#8b008b", "#dda0dd"],
+      };
+      const p = palettes[g.id] || ["#1a1a1a", "#333", "#888", "#ccc"];
+      const svgFor = {
+        g1: `<svg viewBox="0 0 460 215" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${p[0]}"/><stop offset="1" stop-color="${p[1]}"/></linearGradient></defs><rect width="460" height="215" fill="url(#g1)"/><path d="M0 150 Q115 80 230 130 T460 120 L460 215 L0 215 Z" fill="${p[2]}" opacity="0.35"/><path d="M0 180 Q115 120 230 160 T460 150 L460 215 L0 215 Z" fill="${p[3]}" opacity="0.25"/><circle cx="380" cy="60" r="40" fill="${p[3]}" opacity="0.15"/></svg>`,
+        g2: `<svg viewBox="0 0 460 215" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${p[0]}"/><stop offset="1" stop-color="${p[1]}"/></linearGradient></defs><rect width="460" height="215" fill="url(#g2)"/><rect x="180" y="60" width="100" height="120" fill="${p[2]}" opacity="0.6"/><rect x="170" y="50" width="120" height="20" fill="${p[3]}" opacity="0.5"/><path d="M230 80 L260 100 L230 120 L200 100 Z" fill="${p[3]}" opacity="0.8"/></svg>`,
+        g3: `<svg viewBox="0 0 460 215" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice"><defs><radialGradient id="g3" cx="0.5" cy="0.6" r="0.7"><stop offset="0" stop-color="${p[2]}"/><stop offset="1" stop-color="${p[0]}"/></radialGradient></defs><rect width="460" height="215" fill="url(#g3)"/><path d="M230 40 L260 120 L230 200 L200 120 Z" fill="${p[3]}" opacity="0.5"/><circle cx="230" cy="120" r="30" fill="${p[3]}" opacity="0.3"/></svg>`,
+        g4: `<svg viewBox="0 0 460 215" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="g4" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${p[0]}"/><stop offset="1" stop-color="${p[1]}"/></linearGradient></defs><rect width="460" height="215" fill="url(#g4)"/><circle cx="120" cy="100" r="50" fill="${p[2]}" opacity="0.3"/><rect x="300" y="40" width="8" height="140" fill="${p[3]}" opacity="0.6" transform="rotate(15 304 110)"/><rect x="330" y="50" width="8" height="120" fill="${p[3]}" opacity="0.4" transform="rotate(15 334 110)"/></svg>`,
+        g5: `<svg viewBox="0 0 460 215" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="g5" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${p[0]}"/><stop offset="1" stop-color="${p[1]}"/></linearGradient></defs><rect width="460" height="215" fill="url(#g5)"/><circle cx="230" cy="107" r="60" fill="none" stroke="${p[2]}" stroke-width="3" opacity="0.6"/><circle cx="230" cy="107" r="30" fill="${p[3]}" opacity="0.4"/></svg>`,
+        g6: `<svg viewBox="0 0 460 215" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="g6" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${p[0]}"/><stop offset="1" stop-color="${p[1]}"/></linearGradient></defs><rect width="460" height="215" fill="url(#g6)"/><path d="M0 120 L60 90 L120 130 L180 80 L240 110 L300 70 L360 100 L420 60 L460 90 L460 215 L0 215 Z" fill="${p[2]}" opacity="0.4"/><path d="M0 160 L60 140 L120 170 L180 130 L240 150 L300 120 L360 140 L420 110 L460 130 L460 215 L0 215 Z" fill="${p[3]}" opacity="0.3"/></svg>`,
+        g7: `<svg viewBox="0 0 460 215" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="g7" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${p[0]}"/><stop offset="1" stop-color="${p[1]}"/></linearGradient></defs><rect width="460" height="215" fill="url(#g7)"/><rect x="100" y="50" width="260" height="115" rx="8" fill="none" stroke="${p[2]}" stroke-width="2" opacity="0.6"/><circle cx="230" cy="107" r="20" fill="${p[3]}" opacity="0.5"/></svg>`,
+        g8: `<svg viewBox="0 0 460 215" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice"><defs><radialGradient id="g8" cx="0.3" cy="0.4" r="0.8"><stop offset="0" stop-color="${p[2]}"/><stop offset="1" stop-color="${p[0]}"/></radialGradient></defs><rect width="460" height="215" fill="url(#g8)"/><path d="M0 0 L460 0 L460 60 Q230 120 0 60 Z" fill="${p[3]}" opacity="0.2"/><circle cx="350" cy="160" r="30" fill="${p[3]}" opacity="0.25"/></svg>`,
+      };
+      return svgFor[g.id] || `<svg viewBox="0 0 460 215" xmlns="http://www.w3.org/2000/svg"><rect width="460" height="215" fill="${p[0]}"/></svg>`;
+    }
+
+    function matches(g) {
+      if (state.search && !g.name.toLowerCase().includes(state.search)) return false;
+      if (state.filter === "installed") return g.installed;
+      if (state.filter === "favorites") return g.favorite;
+      return true;
+    }
+
+    function renderCounts() {
+      document.getElementById("c-all").textContent = games.length;
+      document.getElementById("c-installed").textContent = games.filter(g => g.installed).length;
+      document.getElementById("c-favorites").textContent = games.filter(g => g.favorite).length;
+    }
+
+    function renderTags() {
+      const tags = [...new Set(games.map(g => g.tag))].sort();
+      const bar = document.getElementById("tag-bar");
+      bar.innerHTML = "";
+      for (const t of tags) {
+        const b = document.createElement("button");
+        b.className = "coll-btn";
+        b.textContent = t;
+        b.dataset.tag = t;
+        b.addEventListener("click", () => {
+          state.filter = "tag:" + t;
+          syncCollections();
+          renderGrid();
+        });
+        const c = document.createElement("span");
+        c.className = "count";
+        c.textContent = games.filter(g => g.tag === t).length;
+        b.appendChild(c);
+        bar.appendChild(b);
+      }
+    }
+
+    function syncCollections() {
+      document.querySelectorAll(".collections-bar button").forEach(b => {
+        const active = (b.dataset.filter && b.dataset.filter === state.filter) ||
+                       (b.dataset.tag && state.filter === "tag:" + b.dataset.tag);
+        b.classList.toggle("active", !!active);
+      });
+    }
+
+    function renderHero() {
+      const hero = document.getElementById("hero");
+      const featured = games.find(g => g.installed) || games[0];
+      if (!featured) { hero.hidden = true; return; }
+      hero.hidden = false;
+      hero.innerHTML = `
+        <div class="cover">${coverArt(featured)}</div>
+        <div class="info">
+          <div class="meta">Continue playing</div>
+          <h2>${featured.name}</h2>
+          <div class="meta">${featured.tag} · ${featured.version} · ${featured.size} · Last played ${featured.lastPlayed}</div>
+          <div class="actions">
+            <button class="btn-play">Play</button>
+            <button class="btn-ghost">Details</button>
+          </div>
+        </div>`;
+      hero.querySelector(".btn-play").addEventListener("click", () => alert("Mock: play " + featured.name));
+      hero.querySelector(".btn-ghost").addEventListener("click", () => selectGame(featured.id));
+      state.selected = featured.id;
+      renderGrid();
+    }
+
+    function renderGrid() {
+      const grid = document.getElementById("grid");
+      const empty = document.getElementById("empty");
+      grid.innerHTML = "";
+      const list = games.filter(g => {
+        if (state.filter.startsWith("tag:")) {
+          if (g.tag !== state.filter.slice(4)) return false;
+        } else if (!matches(g)) return false;
+        if (state.search && !g.name.toLowerCase().includes(state.search.toLowerCase())) return false;
+        return true;
+      });
+      if (list.length === 0) { empty.hidden = false; return; }
+      empty.hidden = true;
+      for (const g of list) {
+        const card = document.createElement("article");
+        card.className = "card" + (state.selected === g.id ? " selected" : "");
+        card.setAttribute("role", "listitem");
+        card.tabIndex = 0;
+        card.innerHTML = `
+          <div class="cover">
+            <span class="badge">${g.installed ? "Installed" : "Not installed"}</span>
+            ${coverArt(g)}
+          </div>
+          <div class="card-body">
+            <div class="card-title">${g.name}</div>
+            <div class="card-meta">${g.tag}</div>
+            <div class="card-actions">
+              <button class="btn-play" data-play="${g.id}">${g.installed ? "Play" : "Install"}</button>
+              <button class="btn-ghost" data-details="${g.id}" aria-label="Details for ${g.name}">i</button>
+            </div>
+          </div>`;
+        card.addEventListener("click", (e) => {
+          if (e.target.closest("button")) return;
+          selectGame(g.id);
+        });
+        card.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectGame(g.id); }
+        });
+        grid.appendChild(card);
+      }
+      grid.querySelectorAll("[data-play]").forEach(b => {
+        b.addEventListener("click", (e) => { e.stopPropagation(); alert("Mock: " + b.textContent + " clicked for " + games.find(x=>x.id===b.dataset.play).name); });
+      });
+      grid.querySelectorAll("[data-details]").forEach(b => {
+        b.addEventListener("click", (e) => { e.stopPropagation(); selectGame(b.dataset.details); });
+      });
+    }
+
+    const gdModal = document.getElementById("game-detail-modal");
+    function openGameDetail() { gdModal.hidden = false; }
+    function closeGameDetail() { gdModal.hidden = true; }
+    document.getElementById("gd-close").addEventListener("click", closeGameDetail);
+    document.getElementById("gd-cancel").addEventListener("click", closeGameDetail);
+    gdModal.addEventListener("click", (e) => { if (e.target === gdModal) closeGameDetail(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !gdModal.hidden) closeGameDetail(); });
+
+    function selectGame(id) {
+      state.selected = id;
+      renderGrid();
+      const g = games.find(x => x.id === id);
+      const body = document.getElementById("game-detail-body");
+      document.getElementById("gd-title").textContent = g.name;
+      body.innerHTML = `
+        <div class="gd-top">
+          <div class="cover-large">${coverArt(g)}</div>
+          <div class="gd-details">
+            <div class="field"><span class="k">Status</span><span class="v badge">${g.installed ? "Installed" : "Not installed"}</span></div>
+            <div class="field"><span class="k">Tag</span><span class="v">${g.tag}</span></div>
+            <div class="field"><span class="k">Version</span><span class="v">${g.version}</span></div>
+            <div class="field"><span class="k">Size</span><span class="v">${g.size}</span></div>
+            <div class="field"><span class="k">Last played</span><span class="v">${g.lastPlayed}</span></div>
+            <div class="field"><span class="k">Hours played</span><span class="v">${(g.hoursPlayed || 0).toFixed(1)} h</span></div>
+            <div class="field"><span class="k">Favorite</span><span class="v">${g.favorite ? "Yes" : "No"}</span></div>
+          </div>
+        </div>
+        <p class="desc">${g.description}</p>`;
+      const footerPlay = gdModal.querySelector(".modal-footer .btn-play");
+      footerPlay.textContent = g.installed ? "Play" : "Install";
+      footerPlay.onclick = () => alert("Mock: " + footerPlay.textContent + " " + g.name);
+      openGameDetail();
+    }
+
+    // View switching (Library / Admin)
+    function showView(name) {
+      document.querySelectorAll(".view").forEach(v => { v.hidden = v.id !== "view-" + name; });
+      document.querySelectorAll(".topnav button").forEach(b => {
+        b.classList.toggle("active", b.dataset.view === name);
+      });
+      if (name === "admin") renderAdminTab(currentTab);
+    }
+    let currentTab = "users";
+    document.querySelectorAll(".topnav button").forEach(b => {
+      b.addEventListener("click", () => showView(b.dataset.view));
+    });
+
+    // Admin tabs
+    const adminTabs = {
+      users: {
+        title: "User settings",
+        subtitle: "Accounts and their paired clients, edited in one place.",
+        html: `
+          <h3 style="margin:0 0 6px;color:var(--text-strong);font-size:14px;">Accounts</h3>
+          <div class="table-wrap" style="margin-bottom:16px;">
+            <table class="admin-table">
+              <thead><tr><th>Username</th><th>Display name</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>
+                <tr><td>admin</td><td>Administrator</td><td>admin</td><td><span class="badge ok">active</span></td><td><button class="btn-ghost">Edit</button></td></tr>
+                <tr><td>alice</td><td>Alice</td><td>user</td><td><span class="badge ok">active</span></td><td><button class="btn-ghost">Edit</button></td></tr>
+                <tr><td>bob</td><td>Bob</td><td>user</td><td><span class="badge warn">disabled</span></td><td><button class="btn-ghost">Edit</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+          </div>`,
+      },
+      store: {
+        title: "Game store",
+        subtitle: "Catalog entries served to clients.",
+        columns: ["Name", "Company", "Tags", "Releases", "Actions"],
+        rows: [
+          ["Aurora Drift", "Studio A", "Racing", "3"],
+          ["Bastion Keep", "Studio B", "Strategy", "1"],
+          ["Cinderwake", "Studio C", "Action", "2"],
+        ],
+      },
+      saves: {
+        title: "Game saves",
+        subtitle: "Cloud save slots and versions.",
+        columns: ["Game", "User", "Slot", "Versions", "Last sync"],
+        rows: [
+          ["Duskfall", "alice", "0", "4", "today"],
+          ["Frostline", "alice", "0", "2", "3 days ago"],
+          ["Aurora Drift", "bob", "1", "1", "1 week ago"],
+        ],
+      },
+      libraries: {
+        title: "Libraries",
+        subtitle: "Install roots configured on clients.",
+        columns: ["Client", "Label", "Path", "Exists"],
+        rows: [
+          ["desktop-alice", "Games", "/home/alice/Games", "yes"],
+          ["desktop-bob", "Games", "C:\\Games", "yes"],
+        ],
+      },
+      companies: {
+        title: "Companies",
+        subtitle: "Publishers and developers.",
+        columns: ["Name", "Kind", "Games"],
+        rows: [
+          ["Studio A", "developer", "1"],
+          ["Studio B", "publisher", "1"],
+          ["Studio C", "developer", "1"],
+        ],
+      },
+      tags: {
+        title: "Tags",
+        subtitle: "Labels applied to catalog entries.",
+        columns: ["Name", "Color", "Games"],
+        rows: [
+          ["Action", "#7a2a2a", "2"],
+          ["Racing", "#2a5a7a", "1"],
+          ["RPG", "#3a2a5a", "1"],
+        ],
+      },
+      discovery: {
+        title: "Catalog discovery",
+        subtitle: "Discover owned products and review their metadata before adding them. Discovery never publishes or downloads content by itself.",
+        html: `
+          <div class="store-tabs" role="tablist" aria-label="Stores">
+            <button class="store-tab active">GOG</button>
+            <button class="store-tab">Epic Games Store</button>
+            <button class="store-tab">Ubisoft Connect</button>
+
+          </div>
+          <div class="login-box">
+            <div class="login-row">
+              <span class="login-status"><span class="badge warn">not connected</span></span>
+              <span class="login-user">No account linked</span>
+              <div class="spacer"></div>
+              <button class="btn-primary">Log in</button>
+            </div>
+            <p class="subtitle" style="margin:6px 0 0;">Log in to this store to discover owned products. Discovery never publishes or downloads content by itself.</p>
+          </div>
+          <div class="games-box">
+            <div class="games-box-header">
+              <span>Discovered games</span>
+              <div class="spacer"></div>
+              <button class="btn-ghost">Refresh</button>
+            </div>
+            <div class="table-wrap">
+              <table class="admin-table">
+                <thead><tr><th>Product</th><th>Metadata</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody>
+                  <tr><td>Example Game A</td><td>Title, cover, description</td><td><span class="badge warn">pending</span></td><td><button class="btn-primary">Ingest</button></td></tr>
+                  <tr><td>Example Game B</td><td>Title, cover</td><td><span class="badge ok">ready</span></td><td><button class="btn-primary">Ingest</button></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>`,
+      },
+      settings: {
+        title: "Settings",
+        subtitle: "Instance configuration.",
+        html: `
+          <div class="form-grid">
+            <div class="field"><label>Server URL</label><input value="https://depot.example" /></div>
+            <div class="field"><label>Library path</label><input value="/var/lib/gamedepot/library" /></div>
+            <div class="field"><label>Object store</label><input value="/var/lib/gamedepot/objects" /></div>
+            <div class="field"><label>Max upload (MiB)</label><input type="number" value="1024" /></div>
+          </div>
+          <div style="margin-top:12px"><button class="btn-primary">Save settings</button></div>`,
+      },
+    };
+
+    function renderAdminTab(tab) {
+      currentTab = tab;
+      document.querySelectorAll(".admin-nav button").forEach(b => {
+        b.classList.toggle("active", b.dataset.tab === tab);
+      });
+      const data = adminTabs[tab];
+      const main = document.getElementById("admin-main");
+      if (data.html) {
+        main.innerHTML = `<h2>${data.title}</h2><p class="subtitle">${data.subtitle}</p>${data.html}`;
+        return;
+      }
+      const thead = data.columns.map(c => `<th>${c}</th>`).join("");
+      const tbody = data.rows.map(r => {
+        const cells = r.map((v, i) => {
+          if (data.columns[i] === "Status" || data.columns[i] === "Exists") {
+            const cls = (v === "active" || v === "yes") ? "ok" : "warn";
+            return `<td><span class="badge ${cls}">${v}</span></td>`;
+          }
+          return `<td>${v}</td>`;
+        }).join("");
+        return `<tr>${cells}<td><button class="btn-ghost">Edit</button></td></tr>`;
+      }).join("");
+      main.innerHTML = `
+        <h2>${data.title}</h2>
+        <p class="subtitle">${data.subtitle}</p>
+        <div class="admin-toolbar">
+          <div class="spacer"></div>
+          <button class="btn-primary">Add new</button>
+        </div>
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead><tr>${thead}<th>Actions</th></tr></thead>
+            <tbody>${tbody}</tbody>
+          </table>
+        </div>`;
+    }
+
+    document.querySelectorAll(".admin-nav button").forEach(b => {
+      b.addEventListener("click", () => renderAdminTab(b.dataset.tab));
+    });
+
+    // User dropdown
+    const trigger = document.getElementById("user-trigger");
+    const dropdown = document.getElementById("user-dropdown");
+    function closeDropdown() {
+      dropdown.hidden = true;
+      trigger.setAttribute("aria-expanded", "false");
+    }
+    trigger.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const open = dropdown.hidden;
+      dropdown.hidden = !open;
+      trigger.setAttribute("aria-expanded", String(open));
+    });
+    document.addEventListener("click", (e) => {
+      if (!document.getElementById("user-menu").contains(e.target)) closeDropdown();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeDropdown();
+    });
+    dropdown.querySelectorAll("[data-action]").forEach(b => {
+      b.addEventListener("click", () => {
+        const action = b.dataset.action;
+        closeDropdown();
+        if (action === "admin") showView("admin");
+        else if (action === "user") openUserSettings();
+        else if (action === "signout") alert("Mock: signed out");
+        else alert("Mock: opening " + action + " settings");
+      });
+    });
+
+    const usModal = document.getElementById("user-settings-modal");
+    function openUserSettings() {
+      closeDropdown();
+      usModal.hidden = false;
+    }
+    function closeUserSettings() { usModal.hidden = true; }
+    document.getElementById("us-close").addEventListener("click", closeUserSettings);
+    document.getElementById("us-cancel").addEventListener("click", closeUserSettings);
+    usModal.addEventListener("click", (e) => { if (e.target === usModal) closeUserSettings(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !usModal.hidden) closeUserSettings(); });
+
+    // Library wiring
+    document.querySelectorAll(".collections-bar button[data-filter]").forEach(b => {
+      b.addEventListener("click", () => {
+        state.filter = b.dataset.filter;
+        syncCollections();
+        renderGrid();
+      });
+    });
+    document.getElementById("search").addEventListener("input", (e) => {
+      state.search = e.target.value.toLowerCase();
+      renderGrid();
+    });
+
+    renderCounts();
+    renderTags();
+    syncCollections();
+    renderGrid();
+  </script>
+</body>
+</html>
